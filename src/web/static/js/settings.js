@@ -17,14 +17,14 @@
         volumeDisplay: document.getElementById('volume-display'),
         // PagerDuty
         pagerdutyKey: document.getElementById('pagerduty-key'),
-        pagerdutyStatus: document.getElementById('pagerduty-status'),
         // Healthchecks
         healthchecksUrl: document.getElementById('healthchecks-url'),
-        healthchecksStatus: document.getElementById('healthchecks-status'),
         // Device
         plugIp: document.getElementById('plug-ip'),
         discoverPlugsBtn: document.getElementById('discover-plugs'),
         discoveredDevices: document.getElementById('discovered-devices'),
+        // Test alert
+        testAlertBtn: document.getElementById('test-alert-btn'),
         // Save
         saveBtn: document.getElementById('save-settings'),
         saveStatus: document.getElementById('save-status')
@@ -77,9 +77,6 @@
             if (elements.plugIp) elements.plugIp.value = config.devices.smart_plug.ip_address || '';
         }
 
-        // Update integration statuses
-        updateIntegrationStatus('pagerduty', config.alerting?.pagerduty?.routing_key);
-        updateIntegrationStatus('healthchecks', config.alerting?.healthchecks?.ping_url);
     }
 
     // Set up event listeners
@@ -98,26 +95,44 @@
         if (elements.saveBtn) {
             elements.saveBtn.addEventListener('click', saveSettings);
         }
+
+        // Test alert button
+        if (elements.testAlertBtn) {
+            elements.testAlertBtn.addEventListener('click', testAlert);
+        }
+    }
+
+    // Trigger test alert
+    async function testAlert() {
+        elements.testAlertBtn.disabled = true;
+        elements.testAlertBtn.textContent = 'Testing...';
+
+        try {
+            const response = await fetch('/api/alerts/test', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'same-origin'
+            });
+
+            if (!response.ok) throw new Error('Failed to trigger test alert');
+
+            const data = await response.json();
+            alert(data.message || 'Test alert triggered');
+        } catch (error) {
+            console.error('Error triggering test alert:', error);
+            alert('Failed to trigger test alert');
+        } finally {
+            elements.testAlertBtn.disabled = false;
+            elements.testAlertBtn.textContent = 'Test Alert';
+        }
     }
 
     // Update volume display
     function updateVolumeDisplay() {
         if (elements.volumeDisplay && elements.audioVolume) {
             elements.volumeDisplay.textContent = elements.audioVolume.value + '%';
-        }
-    }
-
-    // Update integration status indicator
-    function updateIntegrationStatus(integration, hasConfig) {
-        const statusEl = document.getElementById(integration + '-status');
-        const indicatorEl = statusEl?.previousElementSibling;
-
-        if (statusEl) {
-            statusEl.textContent = hasConfig ? 'Configured' : 'Not Configured';
-        }
-        if (indicatorEl && indicatorEl.classList.contains('status-indicator')) {
-            indicatorEl.classList.remove('connected', 'disconnected');
-            indicatorEl.classList.add(hasConfig ? 'connected' : 'disconnected');
         }
     }
 
@@ -201,10 +216,6 @@
 
             elements.saveStatus.textContent = 'Settings saved successfully';
             elements.saveStatus.style.color = '#4CAF50';
-
-            // Update integration statuses
-            updateIntegrationStatus('pagerduty', config.alerting?.pagerduty?.routing_key);
-            updateIntegrationStatus('healthchecks', config.alerting?.healthchecks?.ping_url);
 
             // Clear status after 3 seconds
             setTimeout(() => {

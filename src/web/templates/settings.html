@@ -61,16 +61,6 @@
         <!-- PagerDuty Integration -->
         <section class="settings-section">
             <h2>PagerDuty Integration</h2>
-            <div class="integration-status">
-                <span class="status-indicator {% if config and config.alerting.pagerduty.routing_key %}connected{% else %}disconnected{% endif %}"></span>
-                <span id="pagerduty-status">
-                    {% if config and config.alerting.pagerduty.routing_key %}
-                    Configured
-                    {% else %}
-                    Not Configured
-                    {% endif %}
-                </span>
-            </div>
             <div class="form-group">
                 <label for="pagerduty-key">Events API v2 Routing Key</label>
                 <input type="text" id="pagerduty-key" placeholder="Enter routing key"
@@ -87,16 +77,6 @@
         <!-- Healthchecks.io Integration -->
         <section class="settings-section">
             <h2>Healthchecks.io Integration</h2>
-            <div class="integration-status">
-                <span class="status-indicator {% if config and config.alerting.healthchecks.ping_url %}connected{% else %}disconnected{% endif %}"></span>
-                <span id="healthchecks-status">
-                    {% if config and config.alerting.healthchecks.ping_url %}
-                    Configured
-                    {% else %}
-                    Not Configured
-                    {% endif %}
-                </span>
-            </div>
             <div class="form-group">
                 <label for="healthchecks-url">Ping URL</label>
                 <input type="url" id="healthchecks-url" placeholder="https://hc-ping.com/your-uuid"
@@ -107,6 +87,15 @@
                 <a href="https://healthchecks.io/docs/" target="_blank" class="help-link">
                     How to set up Healthchecks.io
                 </a>
+            </div>
+        </section>
+
+        <!-- Test Alerts -->
+        <section class="settings-section">
+            <h2>Test Alerts</h2>
+            <div class="form-group">
+                <button class="btn btn-warning" id="test-alert-btn">Test Alert</button>
+                <span class="help-text">Trigger a test alert to verify your alert configuration</span>
             </div>
         </section>
 
