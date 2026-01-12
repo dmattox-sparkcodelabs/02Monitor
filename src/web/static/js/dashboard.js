@@ -197,6 +197,11 @@
                 document.querySelectorAll('.chart-controls .btn').forEach(b => b.classList.remove('active'));
                 this.classList.add('active');
                 chartRange = parseInt(this.dataset.range);
+                // Update chart title
+                const chartTitle = document.getElementById('chart-title');
+                if (chartTitle) {
+                    chartTitle.textContent = 'SpO2 Trend (Last ' + chartRange + ' Hour' + (chartRange > 1 ? 's' : '') + ')';
+                }
                 loadChartData();
             });
         });
@@ -388,10 +393,14 @@
             const endTime = new Date();
             const startTime = new Date(endTime - chartRange * 60 * 60 * 1000);
 
+            // Calculate appropriate limit based on range
+            // At ~6 readings/min, we need: 1h=360, 6h=2160, 24h=8640
+            const limit = chartRange <= 1 ? 500 : chartRange <= 6 ? 3000 : 10000;
+
             const params = new URLSearchParams({
                 start: startTime.toISOString(),
                 end: endTime.toISOString(),
-                limit: 1000
+                limit: limit
             });
 
             const response = await fetch('/api/readings?' + params, { credentials: 'same-origin' });
