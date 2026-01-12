@@ -40,3 +40,4 @@ credentials.json
 
 # Claude Code memory
 CLAUDE.md
+config.yaml

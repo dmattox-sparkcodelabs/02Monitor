@@ -1,11 +1,11 @@
 mock_mode: false
 devices:
   oximeter:
-    mac_address: C8:F1:6B:56:7B:F1
+    mac_address: XX:XX:XX:XX:XX:XX
     name: Checkme O2 Max
     read_interval_seconds: 5
   smart_plug:
-    ip_address: 192.168.50.10
+    ip_address: 192.168.1.100
     name: AVAPS Power Monitor
 thresholds:
   spo2:
@@ -21,30 +21,30 @@ thresholds:
 alerting:
   pagerduty:
     enabled: true
-    routing_key: ${PAGERDUTY_ROUTING_KEY}
+    routing_key: YOUR_PAGERDUTY_ROUTING_KEY
     service_name: O2 Monitor
   local_audio:
     enabled: true
     alarm_sound: sounds/alarm.wav
     volume: 100
     use_tts: true
-    tts_message: Medical alert. Check on Dad immediately.
+    tts_message: Medical alert. Check on patient immediately.
     repeat_interval_seconds: 30
   alexa:
     enabled: false
-    notify_me_access_code: ${ALEXA_NOTIFY_CODE}
+    notify_me_access_code: YOUR_ALEXA_NOTIFY_CODE
   healthchecks:
     enabled: true
-    ping_url: ${HEALTHCHECKS_PING_URL}
+    ping_url: https://hc-ping.com/YOUR_CHECK_UUID
     interval_seconds: 60
 messages:
-  spo2_alarm: Medical alert! Oxygen level critical. Check on Dad immediately.
+  spo2_alarm: Medical alert! Oxygen level critical. Check on patient immediately.
   ble_disconnect: O2 monitor disconnected. Please check the device.
   system_error: O2 monitoring system error. Requires attention.
 web:
   host: 0.0.0.0
   port: 5000
-  secret_key: ${FLASK_SECRET_KEY}
+  secret_key: GENERATE_A_RANDOM_SECRET_KEY
   debug: false
 auth:
   session_timeout_minutes: 30
@@ -52,7 +52,7 @@ auth:
   lockout_minutes: 15
   users:
   - username: admin
-    password_hash: $2b$12$v8/MNGQs98WZCP0TBTDGbOZp2kBRv3whuqH2maLAD/V9ZPYhRk.Cy
+    password_hash: GENERATE_WITH_BCRYPT
     role: admin
 database:
   path: data/history.db
