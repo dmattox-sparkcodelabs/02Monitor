@@ -33,7 +33,6 @@ import asyncio
 import logging
 import os
 import sys
-import uuid
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -111,7 +110,6 @@ class O2MonitorStateMachine:
 
         # Low SpO2 tracking
         self._low_spo2_start: Optional[datetime] = None
-        self._alarm_alert_id: Optional[str] = None
 
         # BLE tracking
         self._disconnect_start: Optional[datetime] = None
@@ -407,7 +405,11 @@ class O2MonitorStateMachine:
         return MonitorState.DISCONNECTED
 
     async def _evaluate_low_spo2(self) -> MonitorState:
-        """Evaluate low SpO2 condition."""
+        """Evaluate low SpO2 condition for UI state display.
+
+        Note: Actual SpO2 alerting is handled by AlertEvaluator with
+        therapy-aware thresholds. This just tracks state for the UI.
+        """
         now = datetime.now()
         alarm_duration = self.config.thresholds.spo2.alarm_duration_seconds
 
@@ -420,12 +422,9 @@ class O2MonitorStateMachine:
             )
             return MonitorState.LOW_SPO2_WARNING
 
-        # Check if alarm duration exceeded
+        # Check if alarm duration exceeded - just for UI state
         elapsed = (now - self._low_spo2_start).total_seconds()
         if elapsed >= alarm_duration:
-            # Trigger alarm if not already triggered
-            if self._alarm_alert_id is None:
-                await self._trigger_spo2_alarm()
             return MonitorState.ALARM
 
         return MonitorState.LOW_SPO2_WARNING
@@ -464,53 +463,12 @@ class O2MonitorStateMachine:
             logger.info("BLE reconnected")
 
         if old_state == MonitorState.ALARM and new_state != MonitorState.ALARM:
-            # Alarm resolved
-            if self._alarm_alert_id:
-                await self.alert_manager.resolve_alert(self._alarm_alert_id)
-                self._alarm_alert_id = None
+            # Alarm resolved - AlertEvaluator handles alert lifecycle
             logger.info("SpO2 alarm resolved")
 
         if new_state == MonitorState.THERAPY_ACTIVE:
             # AVAPS turned on - clear any low SpO2 tracking
             self._low_spo2_start = None
-            if self._alarm_alert_id:
-                await self.alert_manager.resolve_alert(self._alarm_alert_id)
-                self._alarm_alert_id = None
-
-    # ==================== Alerting ====================
-
-    async def _trigger_spo2_alarm(self) -> None:
-        """Trigger SpO2 alarm."""
-        reading = self._current_reading
-        duration = self.low_spo2_duration
-
-        message = self.config.messages.spo2_alarm
-        if reading:
-            message = f"{message} SpO2: {reading.spo2}%"
-
-        alert = Alert(
-            id=f"spo2-{uuid.uuid4().hex[:8]}",
-            timestamp=datetime.now(),
-            alert_type=AlertType.SPO2_CRITICAL,
-            severity=AlertSeverity.CRITICAL,
-            message=message,
-            spo2=reading.spo2 if reading else None,
-            heart_rate=reading.heart_rate if reading else None,
-            avaps_state=self._avaps_state,
-        )
-
-        self._alarm_alert_id = alert.id
-
-        # Store in database
-        await self.database.insert_alert(alert)
-
-        # Trigger alarm
-        await self.alert_manager.trigger_alarm(alert)
-
-        logger.critical(
-            f"SPO2 ALARM: {reading.spo2 if reading else '?'}% "
-            f"for {duration.total_seconds() if duration else 0:.0f}s"
-        )
 
     # ==================== Component Integration ====================
 
