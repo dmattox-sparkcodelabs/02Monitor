@@ -1,3 +1,8 @@
+# =============================================================================
+# DISCLAIMER: This software is NOT a medical device and is NOT intended for
+# medical monitoring, diagnosis, or treatment. This is a proof of concept for
+# educational purposes only. Do not rely on this system for health decisions.
+# =============================================================================
 """Database layer for O2 Monitor.
 
 This module handles SQLite database operations for persisting:
