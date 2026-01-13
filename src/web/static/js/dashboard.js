@@ -273,8 +273,8 @@
         // Update state banner
         updateStateBanner(effectiveState, secondsUntilReconnect);
 
-        // Update vitals - show "--" when disconnected/late or no vitals data
-        const showVitals = data.vitals && effectiveState !== 'disconnected';
+        // Update vitals - show "--" when disconnected, late reading, or no vitals data
+        const showVitals = data.vitals && effectiveState !== 'disconnected' && effectiveState !== 'late_reading';
         if (showVitals) {
             const vitals = data.vitals;
 
