@@ -1,0 +1,24 @@
+[Unit]
+Description=O2 Monitor - SpO2 Monitoring System
+Documentation=https://github.com/dmattox-sparkcodelabs/O2Monitor
+After=network.target bluetooth.target
+
+[Service]
+Type=simple
+User=dmattox
+Group=dmattox
+WorkingDirectory=/home/dmattox/projects/O2Monitor
+ExecStart=/home/dmattox/projects/O2Monitor/venv/bin/python -m src.main
+Restart=on-failure
+RestartSec=10
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+
+# Logging (goes to journalctl)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=o2monitor
+
+[Install]
+WantedBy=multi-user.target

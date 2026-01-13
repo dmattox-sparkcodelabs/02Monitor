@@ -3,6 +3,16 @@
 (function() {
     'use strict';
 
+    // Fetch wrapper that handles 401 redirects
+    async function apiFetch(url, options = {}) {
+        const response = await fetch(url, { credentials: 'same-origin', ...options });
+        if (response.status === 401) {
+            window.location.href = '/auth/login';
+            throw new Error('Unauthorized');
+        }
+        return response;
+    }
+
     // DOM Elements
     const elements = {
         // Alert table
@@ -48,7 +58,7 @@
     // Load current configuration
     async function loadCurrentConfig() {
         try {
-            const response = await fetch('/api/config', { credentials: 'same-origin' });
+            const response = await apiFetch('/api/config');
             if (!response.ok) throw new Error('Failed to load config');
 
             const config = await response.json();
@@ -163,10 +173,9 @@
         elements.testAlertBtn.textContent = 'Testing...';
 
         try {
-            const response = await fetch('/api/alerts/test', {
+            const response = await apiFetch('/api/alerts/test', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'same-origin'
+                headers: { 'Content-Type': 'application/json' }
             });
 
             if (!response.ok) throw new Error('Failed to trigger test alert');
@@ -197,8 +206,7 @@
         elements.discoveredDevices.style.display = 'block';
 
         try {
-            const response = await fetch('/api/devices/discover', {
-                credentials: 'same-origin',
+            const response = await apiFetch('/api/devices/discover', {
                 method: 'POST'
             });
 
@@ -253,8 +261,7 @@
         try {
             const config = buildConfigObject();
 
-            const response = await fetch('/api/config', {
-                credentials: 'same-origin',
+            const response = await apiFetch('/api/config', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(config)

@@ -571,10 +571,11 @@ class O2MonitorStateMachine:
         await self.alert_manager.send_heartbeat(status)
 
     async def _run_cleanup(self) -> None:
-        """Run daily database cleanup."""
+        """Run daily database cleanup and config backup."""
         self._last_cleanup = datetime.now()
-        logger.info("Running daily database cleanup")
+        logger.info("Running daily maintenance")
 
+        # Database cleanup
         try:
             deleted = await self.database.cleanup_old_data(
                 readings_days=30,
@@ -589,6 +590,22 @@ class O2MonitorStateMachine:
             )
         except Exception as e:
             logger.error(f"Database cleanup failed: {e}")
+
+        # Config backup
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["./backup-config.sh"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if result.returncode == 0:
+                logger.info("Config backup completed")
+            else:
+                logger.warning(f"Config backup failed: {result.stderr}")
+        except Exception as e:
+            logger.error(f"Config backup failed: {e}")
 
 
 # Command-line interface for testing

@@ -236,10 +236,10 @@
   - [x] Repeating alarms include TTS every 30 seconds
 
 ### 4.2 PagerDuty Integration
-- [ ] Set up PagerDuty account/service
-  - [ ] Create service for O2 Monitor
-  - [ ] Get Events API v2 routing key
-  - [ ] Configure escalation policy (son -> sister)
+- [x] Set up PagerDuty account/service
+  - [x] Create service for O2 Monitor
+  - [x] Get Events API v2 routing key
+  - [x] Configure escalation policy
 - [x] Implement PagerDuty client (PagerDutyClient class)
   - [x] `async trigger_incident(summary, severity, details)`
   - [x] `async acknowledge_incident(dedup_key)`
@@ -247,18 +247,18 @@
 - [x] Create dedup key strategy
   - [x] SpO2 alarms: `o2-spo2-{date}`
   - [x] BLE disconnect: `o2-ble-{date}`
-- [ ] Test incident creation and resolution (requires PagerDuty account)
+- [x] Test incident creation and resolution
 
 ### 4.3 Healthchecks.io Integration
-- [ ] Create Healthchecks.io account
-  - [ ] Create check with 1-minute period
-  - [ ] Set 3-minute grace period
-  - [ ] Configure alert channels (email, PagerDuty)
+- [x] Create Healthchecks.io account
+  - [x] Create check with 1-minute period
+  - [x] Set 3-minute grace period
+  - [x] Configure alert channels (email, PagerDuty)
 - [x] Implement heartbeat client (HealthchecksClient class)
   - [x] `async send_ping(status="ok")`
   - [x] `async send_fail(message)`
   - [x] `async send_start()` - signal check starting
-- [ ] Test ping delivery and failure detection (requires account)
+- [x] Test ping delivery and failure detection
 
 ### 4.4 Alert Manager (`alerting.py`)
 - [x] Create `AlertManager` class
@@ -498,35 +498,35 @@
 ## Phase 8: Deployment
 
 ### 8.1 systemd Service
-- [ ] Create service file `/etc/systemd/system/o2monitor.service`
-- [ ] Configure auto-restart on failure
-- [ ] Configure restart delay (10 seconds)
-- [ ] Set up environment file loading
-- [ ] Enable service for boot start
-- [ ] Test service start/stop/restart
+- [x] Create service file `o2monitor.service`
+- [x] Configure auto-restart on failure
+- [x] Configure restart delay (10 seconds)
+- [x] Set up environment (PYTHONUNBUFFERED)
+- [x] Create install script `install-service.sh`
+- [x] Install and test service
 
-### 8.2 Installation Script (`scripts/install.sh`)
-- [ ] Check prerequisites (Python, BlueZ)
-- [ ] Create virtual environment
-- [ ] Install Python dependencies
-- [ ] Create directory structure
-- [ ] Copy default configuration
-- [ ] Set file permissions
-- [ ] Trust BLE device
-- [ ] Install systemd service
-- [ ] Print setup instructions
+### 8.2 Installation Script (`install.sh`)
+- [x] Check prerequisites (Python, BlueZ, GLib, SDL2, espeak)
+- [x] Create virtual environment with system-site-packages
+- [x] Install Python dependencies
+- [x] Create directory structure (data/, logs/)
+- [x] Copy default configuration from config.example.yaml
+- [x] Check for acknowledgment file
+- [x] Prompt for BLE device trust
+- [x] Optional systemd service install
+- [x] Print setup instructions
 
 ### 8.3 Security Hardening
-- [ ] Set database file permissions (600)
-- [ ] Set config file permissions (600)
-- [ ] Set log directory permissions
-- [ ] Configure firewall (if needed)
-- [ ] Review and remove debug settings
+- [-] Set database file permissions (600) - Not needed for single-user home use
+- [-] Set config file permissions (600) - Not needed for single-user home use
+- [-] Set log directory permissions - Not needed for single-user home use
+- [-] Configure firewall (if needed) - Router handles this
+- [x] Review and remove debug settings - Flask runs in production mode
 
 ### 8.4 Backup Strategy
-- [ ] Script to backup database
-- [ ] Script to backup configuration
-- [ ] Document restore procedure
+- [-] Script to backup database - Not needed (30-day retention, not clinically relevant)
+- [x] Script to backup configuration (`backup-config.sh`)
+- [x] Auto-prunes to last 10 backups
 
 ---
 
@@ -629,7 +629,7 @@
 - [x] Add example values for all alert thresholds
 - [x] Update `save_config()` to persist alerts section to YAML
 - [-] Maintain backward compatibility with old threshold format (not needed)
-- [ ] Update `config.example.yaml` as template
+- [x] Update `config.example.yaml` as template
 
 ### 10.6 Web Dashboard Updates
 - [x] Update Settings page for new alert configuration

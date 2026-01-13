@@ -3,6 +3,16 @@
 (function() {
     'use strict';
 
+    // Fetch wrapper that handles 401 redirects
+    async function apiFetch(url, options = {}) {
+        const response = await fetch(url, { credentials: 'same-origin', ...options });
+        if (response.status === 401) {
+            window.location.href = '/auth/login';
+            throw new Error('Unauthorized');
+        }
+        return response;
+    }
+
     // State
     let spo2Chart = null;
     let hrChart = null;
@@ -299,7 +309,7 @@
                 limit: 200000
             });
 
-            const response = await fetch('/api/readings?' + params, { credentials: 'same-origin' });
+            const response = await apiFetch('/api/readings?' + params);
             if (!response.ok) throw new Error('Failed to fetch readings');
 
             const data = await response.json();

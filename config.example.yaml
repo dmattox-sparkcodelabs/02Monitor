@@ -1,65 +1,144 @@
-mock_mode: false
+# =============================================================================
+# O2Monitor Configuration
+# Copy this file to config.yaml and fill in your settings
+# =============================================================================
+
+mock_mode: false  # Set to true for testing without hardware
+
 devices:
   oximeter:
-    mac_address: XX:XX:XX:XX:XX:XX
+    mac_address: "XX:XX:XX:XX:XX:XX"  # Your Checkme O2 Max BLE MAC address
     name: Checkme O2 Max
     read_interval_seconds: 5
   smart_plug:
-    ip_address: 192.168.1.100
+    ip_address: "192.168.1.100"  # Your Kasa KP115 IP address
     name: AVAPS Power Monitor
+
 thresholds:
   spo2:
     alarm_level: 90
     alarm_duration_seconds: 30
     warning_level: 92
   avaps:
-    on_watts: 5.0
-    off_watts: 4.0
+    on_watts: 5.0   # Power above this = AVAPS is ON
+    off_watts: 4.0  # Power below this = AVAPS is OFF
   ble:
     reconnect_alert_minutes: 3
     max_reconnect_attempts: null
+
+# Alert Configuration (therapy-aware, unified format)
+# Each alert: enabled, threshold, duration_seconds, severity, bypass_on_therapy
+alerts:
+  spo2_critical_off_therapy:
+    enabled: true
+    threshold: 90              # SpO2 % below this triggers alert (when not on AVAPS)
+    duration_seconds: 30
+    severity: critical
+    bypass_on_therapy: false
+  spo2_critical_on_therapy:
+    enabled: true
+    threshold: 85              # SpO2 % below this triggers alert (during AVAPS use)
+    duration_seconds: 120      # More time allowed during therapy
+    severity: critical
+    bypass_on_therapy: false
+  spo2_warning:
+    enabled: true
+    threshold: 92
+    duration_seconds: 60
+    severity: warning
+    bypass_on_therapy: true    # Skip during AVAPS therapy
+  hr_high:
+    enabled: true
+    threshold: 120             # BPM above this triggers alert
+    duration_seconds: 60
+    severity: high
+    bypass_on_therapy: true
+  hr_low:
+    enabled: true
+    threshold: 50              # BPM below this triggers alert
+    duration_seconds: 60
+    severity: high
+    bypass_on_therapy: true
+  disconnect:
+    enabled: true
+    threshold: 120             # Seconds disconnected before alert
+    duration_seconds: 0
+    severity: warning
+    bypass_on_therapy: true
+  no_therapy_at_night_info:
+    enabled: true
+    threshold: 30              # Minutes into sleep hours before info alert
+    duration_seconds: 0
+    severity: info
+    bypass_on_therapy: false
+  no_therapy_at_night_high:
+    enabled: true
+    threshold: 60              # Minutes into sleep hours before high alert
+    duration_seconds: 0
+    severity: high
+    bypass_on_therapy: false
+  battery_warning:
+    enabled: true
+    threshold: 25              # Battery % below this triggers alert
+    duration_seconds: 0
+    severity: warning
+    bypass_on_therapy: false
+  battery_critical:
+    enabled: true
+    threshold: 10
+    duration_seconds: 0
+    severity: critical
+    bypass_on_therapy: false
+  sleep_hours:
+    start: "22:00"             # When "no therapy at night" monitoring starts
+    end: "07:00"               # When it ends
+
 alerting:
   pagerduty:
     enabled: true
-    routing_key: YOUR_PAGERDUTY_ROUTING_KEY
+    routing_key: "YOUR_PAGERDUTY_ROUTING_KEY"  # From PagerDuty Events API v2
     service_name: O2 Monitor
   local_audio:
     enabled: true
-    alarm_sound: sounds/alarm.wav
-    volume: 100
-    use_tts: true
-    tts_message: Medical alert. Check on patient immediately.
+    volume: 100                # 0-100
+    use_tts: true              # Text-to-speech announcements
     repeat_interval_seconds: 30
   alexa:
     enabled: false
-    notify_me_access_code: YOUR_ALEXA_NOTIFY_CODE
+    notify_me_access_code: "YOUR_ALEXA_NOTIFY_CODE"
   healthchecks:
     enabled: true
-    ping_url: https://hc-ping.com/YOUR_CHECK_UUID
+    ping_url: "https://hc-ping.com/YOUR_CHECK_UUID"
     interval_seconds: 60
+
 messages:
-  spo2_alarm: Medical alert! Oxygen level critical. Check on patient immediately.
-  ble_disconnect: O2 monitor disconnected. Please check the device.
-  system_error: O2 monitoring system error. Requires attention.
+  spo2_alarm: "Medical alert! Oxygen level critical. Check on patient immediately."
+  ble_disconnect: "O2 monitor disconnected. Please check the device."
+  system_error: "O2 monitoring system error. Requires attention."
+
 web:
-  host: 0.0.0.0
+  host: "0.0.0.0"
   port: 5000
-  secret_key: GENERATE_A_RANDOM_SECRET_KEY
+  secret_key: "GENERATE_A_RANDOM_SECRET_KEY"  # Use: python -c "import secrets; print(secrets.token_hex(32))"
   debug: false
+
 auth:
   session_timeout_minutes: 30
   max_login_attempts: 5
   lockout_minutes: 15
   users:
-  - username: admin
-    password_hash: GENERATE_WITH_BCRYPT
-    role: admin
+    - username: admin
+      # Generate with: python -m src.web.auth 'yourpassword'
+      password_hash: "GENERATE_WITH_BCRYPT"
+      role: admin
+
 database:
   path: data/history.db
   retention:
     readings_days: 30
     alerts_days: 365
     events_days: 90
+
 logging:
   level: INFO
   file: logs/o2monitor.log

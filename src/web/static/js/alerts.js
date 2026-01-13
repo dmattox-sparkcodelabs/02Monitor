@@ -3,6 +3,16 @@
 (function() {
     'use strict';
 
+    // Fetch wrapper that handles 401 redirects
+    async function apiFetch(url, options = {}) {
+        const response = await fetch(url, { credentials: 'same-origin', ...options });
+        if (response.status === 401) {
+            window.location.href = '/auth/login';
+            throw new Error('Unauthorized');
+        }
+        return response;
+    }
+
     // DOM Elements
     const elements = {
         severityFilter: document.getElementById('severity-filter'),
@@ -53,7 +63,7 @@
             if (severity) params.append('severity', severity);
             if (type) params.append('type', type);
 
-            const response = await fetch('/api/alerts?' + params, { credentials: 'same-origin' });
+            const response = await apiFetch('/api/alerts?' + params);
             if (!response.ok) throw new Error('Failed to fetch alerts');
 
             const data = await response.json();
@@ -176,12 +186,9 @@
     // Acknowledge alert (global function for onclick)
     window.acknowledgeAlert = async function(alertId) {
         try {
-            const response = await fetch(`/api/alerts/${alertId}/acknowledge`, {
+            const response = await apiFetch(`/api/alerts/${alertId}/acknowledge`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                credentials: 'same-origin'
+                headers: { 'Content-Type': 'application/json' }
             });
 
             if (!response.ok) throw new Error('Failed to acknowledge alert');

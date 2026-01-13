@@ -3,6 +3,16 @@
 (function() {
     'use strict';
 
+    // Fetch wrapper that handles 401 redirects
+    async function apiFetch(url, options = {}) {
+        const response = await fetch(url, { credentials: 'same-origin', ...options });
+        if (response.status === 401) {
+            window.location.href = '/auth/login';
+            throw new Error('Unauthorized');
+        }
+        return response;
+    }
+
     // State
     let spo2Chart = null;
     let updateInterval = null;
@@ -229,7 +239,7 @@
         resetRefreshProgress();
         try {
             console.log('Fetching /api/status...');
-            const response = await fetch('/api/status', { credentials: 'same-origin' });
+            const response = await apiFetch('/api/status');
             console.log('Response status:', response.status);
             if (!response.ok) throw new Error('Failed to fetch status: ' + response.status);
 
@@ -404,7 +414,7 @@
                 limit: limit
             });
 
-            const response = await fetch('/api/readings?' + params, { credentials: 'same-origin' });
+            const response = await apiFetch('/api/readings?' + params);
             if (!response.ok) throw new Error('Failed to fetch readings');
 
             const data = await response.json();
@@ -427,12 +437,9 @@
             elements.testAlertBtn.disabled = true;
             elements.testAlertBtn.textContent = 'Testing...';
 
-            const response = await fetch('/api/alerts/test', {
+            const response = await apiFetch('/api/alerts/test', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                credentials: 'same-origin'
+                headers: { 'Content-Type': 'application/json' }
             });
 
             if (!response.ok) throw new Error('Failed to trigger test alert');
@@ -451,12 +458,9 @@
     // Silence alerts
     async function silenceAlerts() {
         try {
-            const response = await fetch('/api/alerts/silence', {
+            const response = await apiFetch('/api/alerts/silence', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ duration_minutes: 30 })
             });
 
@@ -472,12 +476,9 @@
     // Unsilence alerts
     async function unsilenceAlerts() {
         try {
-            const response = await fetch('/api/alerts/unsilence', {
+            const response = await apiFetch('/api/alerts/unsilence', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                credentials: 'same-origin'
+                headers: { 'Content-Type': 'application/json' }
             });
 
             if (!response.ok) throw new Error('Failed to unsilence alerts');

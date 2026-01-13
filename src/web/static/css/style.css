@@ -377,7 +377,7 @@ body {
 }
 
 .avaps-card .vital-value {
-    font-size: 1.5rem;
+    /* Same size as SpO2/HR */
 }
 
 /* Status Grid */

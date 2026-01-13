@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Heart shape -->
+  <path d="M32 56 C16 44 4 32 4 20 C4 10 12 4 22 4 C28 4 32 8 32 8 C32 8 36 4 42 4 C52 4 60 10 60 20 C60 32 48 44 32 56Z"
+        fill="#e53935" stroke="#b71c1c" stroke-width="1"/>
+  <!-- Pulse line -->
+  <polyline points="8,32 20,32 24,20 28,40 32,28 36,36 40,32 56,32"
+            fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
