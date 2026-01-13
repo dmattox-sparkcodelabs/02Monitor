@@ -25,7 +25,8 @@ class AVAPSState(Enum):
 class MonitorState(Enum):
     """Overall system monitoring state."""
     INITIALIZING = "initializing"       # System starting up
-    DISCONNECTED = "disconnected"       # BLE not connected
+    DISCONNECTED = "disconnected"       # BLE not connected or no data >30s
+    LATE_READING = "late_reading"       # No new reading for 10-30 seconds
     THERAPY_ACTIVE = "therapy_active"   # AVAPS on, suppress SpO2 alarms
     NORMAL = "normal"                   # AVAPS off, SpO2 >= 90%
     LOW_SPO2_WARNING = "low_spo2_warning"  # AVAPS off, SpO2 < 90%, countdown started

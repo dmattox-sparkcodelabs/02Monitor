@@ -337,8 +337,9 @@ class O2MonitorStateMachine:
 
     # ==================== State Evaluation ====================
 
-    # Threshold for considering readings stale (seconds)
-    STALE_READING_THRESHOLD = 30
+    # Thresholds for reading staleness (seconds)
+    LATE_READING_THRESHOLD = 10   # 10-30s = late reading warning
+    STALE_READING_THRESHOLD = 30  # >30s = disconnected
 
     async def _evaluate_state(self) -> MonitorState:
         """Evaluate current conditions and determine state.
@@ -350,12 +351,16 @@ class O2MonitorStateMachine:
         if not self.ble_reader.is_connected:
             return await self._evaluate_disconnected()
 
-        # Check for stale readings - if no new data, treat as disconnected
+        # Check for stale/late readings
         # This handles cases where BLE is connected but sensor is off/inactive
         if self._current_reading:
             reading_age = (datetime.now() - self._current_reading.timestamp).total_seconds()
             if reading_age > self.STALE_READING_THRESHOLD:
+                # >30 seconds = disconnected
                 return await self._evaluate_disconnected()
+            elif reading_age > self.LATE_READING_THRESHOLD:
+                # 10-30 seconds = late reading warning
+                return MonitorState.LATE_READING
 
         # Must have a valid reading to be in any "normal" operating state
         if not self._current_reading or not self._current_reading.is_valid:

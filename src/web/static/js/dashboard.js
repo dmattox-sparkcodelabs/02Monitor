@@ -53,12 +53,8 @@
         'late_reading': 'state-late_reading'
     };
 
-    // Threshold for considering a reading "late" (seconds)
-    // Oximeter sends readings every ~5 seconds, so 30 seconds = several missed readings
-    const LATE_READING_THRESHOLD = 30;
-
-    // Threshold before backend forces reconnection (must match main.py stale_threshold)
-    const RECONNECT_THRESHOLD = 60;
+    // Reading staleness is now handled by backend:
+    // 0-10s = normal, 10-30s = late_reading, >30s = disconnected
 
     // Initialize dashboard
     function init() {
@@ -253,25 +249,12 @@
 
     // Update UI with status data
     function updateUI(data) {
-        // Check if reading is late (stale) - override state to late_reading
-        let effectiveState = data.state;
-        let secondsUntilReconnect = null;
-        if (data.ble && data.ble.last_reading_time) {
-            const lastTime = new Date(data.ble.last_reading_time);
-            const now = new Date();
-            const diffSec = Math.floor((now - lastTime) / 1000);
-            // If reading is late but not disconnected, show late_reading state
-            if (diffSec > LATE_READING_THRESHOLD && data.state !== 'disconnected' && data.state !== 'alarm') {
-                effectiveState = 'late_reading';
-            }
-            // Calculate seconds until reconnect attempt
-            if (diffSec > LATE_READING_THRESHOLD && diffSec < RECONNECT_THRESHOLD) {
-                secondsUntilReconnect = RECONNECT_THRESHOLD - diffSec;
-            }
-        }
+        // Backend now handles late_reading and disconnected states based on reading age
+        // 0-10s = normal, 10-30s = late_reading, >30s = disconnected
+        const effectiveState = data.state;
 
         // Update state banner
-        updateStateBanner(effectiveState, secondsUntilReconnect);
+        updateStateBanner(effectiveState);
 
         // Update vitals - show "--" when disconnected, late reading, or no vitals data
         const showVitals = data.vitals && effectiveState !== 'disconnected' && effectiveState !== 'late_reading';
@@ -364,7 +347,7 @@
     }
 
     // Update state banner
-    function updateStateBanner(state, secondsUntilReconnect) {
+    function updateStateBanner(state) {
         // Remove all state classes
         Object.values(stateClasses).forEach(cls => {
             elements.stateBanner.classList.remove(cls);
@@ -385,16 +368,7 @@
             'late_reading': 'LATE READING'
         };
 
-        let displayText = stateNames[state] || state.toUpperCase();
-
-        // Add countdown for late reading or disconnected states
-        if (secondsUntilReconnect !== null && secondsUntilReconnect > 0) {
-            displayText += ' - reconnecting in ' + secondsUntilReconnect + 's';
-        } else if (state === 'disconnected') {
-            displayText += ' - attempting to reconnect...';
-        }
-
-        elements.stateText.textContent = displayText;
+        elements.stateText.textContent = stateNames[state] || state.toUpperCase();
     }
 
     // Load chart data
