@@ -40,6 +40,7 @@ from src.models import (
     Alert, AlertSeverity, AlertType, AVAPSState,
     MonitorState, OxiReading, SystemStatus
 )
+from src.alert_evaluator import AlertEvaluator
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,9 @@ class O2MonitorStateMachine:
         self.avaps_monitor = avaps_monitor
         self.alert_manager = alert_manager
         self.database = database
+
+        # Alert evaluator for therapy-aware alerting
+        self.alert_evaluator = AlertEvaluator(config.alerts)
 
         # State tracking
         self._current_state = MonitorState.INITIALIZING
@@ -237,6 +241,9 @@ class O2MonitorStateMachine:
             await self._store_reading(self._current_reading)
             self._last_stored_reading = self._current_reading
 
+        # Evaluate alerts using new therapy-aware system
+        await self._evaluate_alerts()
+
         # Evaluate state
         new_state = await self._evaluate_state()
 
@@ -273,6 +280,47 @@ class O2MonitorStateMachine:
         await self.alert_manager.send_heartbeat("shutdown")
 
         logger.info("State machine cleanup complete")
+
+    # ==================== Alert Evaluation ====================
+
+    async def _evaluate_alerts(self) -> None:
+        """Evaluate all alert conditions using therapy-aware thresholds.
+
+        Uses the AlertEvaluator to check:
+        - SpO2 critical/warning (therapy-aware thresholds)
+        - HR high/low (therapy-aware)
+        - Disconnect (escalating severity)
+        - No therapy at night (sleep hours check)
+        - Battery warnings
+        """
+        # Get alerts from evaluator
+        alerts = self.alert_evaluator.evaluate(
+            reading=self._current_reading,
+            avaps_state=self._avaps_state,
+            ble_connected=self.ble_reader.is_connected,
+        )
+
+        # Process each alert
+        for alert in alerts:
+            # Set AVAPS state on alert
+            alert.avaps_state = self._avaps_state
+
+            # Store in database
+            await self.database.insert_alert(alert)
+
+            # Trigger alert through manager
+            # Critical alerts always trigger full alarm
+            # Others depend on severity
+            if alert.severity == AlertSeverity.CRITICAL:
+                await self.alert_manager.trigger_alarm(alert)
+            elif alert.severity == AlertSeverity.HIGH:
+                await self.alert_manager.trigger_alarm(alert)
+            elif alert.severity == AlertSeverity.WARNING:
+                # Warning: trigger but maybe not full alarm
+                await self.alert_manager.trigger_alarm(alert)
+            else:
+                # Info: log only, no alarm
+                logger.info(f"Alert (info): {alert.message}")
 
     # ==================== State Evaluation ====================
 
@@ -415,7 +463,7 @@ class O2MonitorStateMachine:
         alert = Alert(
             id=f"spo2-{uuid.uuid4().hex[:8]}",
             timestamp=datetime.now(),
-            alert_type=AlertType.SPO2_LOW,
+            alert_type=AlertType.SPO2_CRITICAL,
             severity=AlertSeverity.CRITICAL,
             message=message,
             spo2=reading.spo2 if reading else None,
@@ -441,7 +489,7 @@ class O2MonitorStateMachine:
         alert = Alert(
             id=f"ble-{uuid.uuid4().hex[:8]}",
             timestamp=datetime.now(),
-            alert_type=AlertType.BLE_DISCONNECT,
+            alert_type=AlertType.DISCONNECT,
             severity=AlertSeverity.WARNING,
             message=self.config.messages.ble_disconnect,
         )

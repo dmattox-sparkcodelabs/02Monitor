@@ -1,8 +1,14 @@
 # O2 Monitor - Implementation Todo List
 
-**Project:** O2 Monitoring System for OHS Patient
+> **DISCLAIMER: NOT FOR MEDICAL USE**
+>
+> This project is a proof of concept and educational exercise only. It is NOT a certified medical device and should NOT be relied upon for medical monitoring, diagnosis, or treatment decisions. This system has not been validated, tested, or approved for clinical use. Do not use this system as a substitute for professional medical care or FDA-approved monitoring equipment. The authors assume no liability for any use of this software.
+
+---
+
+**Project:** O2 Monitoring System for OHS Patient (Proof of Concept)
 **Created:** 2026-01-11
-**Status:** Phase 6 Complete
+**Status:** Phase 10 (Enhanced Alerting) Complete with Audio/TTS
 
 ---
 
@@ -211,21 +217,23 @@
 ## Phase 4: Alerting System
 
 ### 4.1 Local Audio Alerting
-- [ ] Obtain/create alarm sound files
-  - [ ] `sounds/alarm.wav` - loud, attention-getting alarm
-  - [ ] `sounds/alert.wav` - warning/notification sound
-- [H] Test pygame audio on Raspberry Pi
-  - [H] Install SDL2 mixer: `sudo apt install libsdl2-mixer-2.0-0`
-  - [H] Verify speakers connected and working
-  - [H] Test volume control
+- [x] ~~Obtain/create alarm sound files~~ - Not needed, tones generated programmatically
+- [x] Test pygame audio on Raspberry Pi
+  - [x] Install SDL2 mixer: `sudo apt install libsdl2-mixer-2.0-0`
+  - [x] Verify speakers connected and working
+  - [x] Test volume control
 - [x] Implement audio alert functions (AudioAlert class)
-  - [x] `play_alarm()` - play loud repeating alarm
+  - [x] `play_alarm()` - play loud repeating alarm with severity-based tones
   - [x] `play_alert()` - play single warning sound
   - [x] `stop_alarm()` - stop current playback
   - [x] `set_volume(level)` - adjust volume 0-100
-- [ ] Implement TTS announcements (optional/future)
-  - [ ] Use espeak or pyttsx3
-  - [ ] "Medical alert. Check on Dad immediately."
+  - [x] `_generate_tone()` - programmatic tone generation (no external files)
+  - [x] Different tone patterns per severity (critical=fast high beeps, high=double beeps, etc.)
+- [x] Implement TTS announcements
+  - [x] Install espeak: `sudo apt install espeak`
+  - [x] `speak()` method for TTS output
+  - [x] Alert-specific messages ("Oxygen level critical at 85 percent")
+  - [x] Repeating alarms include TTS every 30 seconds
 
 ### 4.2 PagerDuty Integration
 - [ ] Set up PagerDuty account/service
@@ -560,16 +568,102 @@
 
 ---
 
-## Phase 10: Documentation & Training
+## Phase 10: Enhanced Alerting System (NEW - Priority)
 
-### 10.1 Documentation
-- [ ] Update DESIGN.md with final implementation
+### 10.1 Alert Configuration Model Updates
+- [x] Update `models.py` with new alert types
+  - [x] Add `AlertType.SPO2_CRITICAL`, `AlertType.SPO2_WARNING`
+  - [x] Add `AlertType.HR_HIGH`, `AlertType.HR_LOW`
+  - [x] Add `AlertType.BATTERY_WARNING`, `AlertType.BATTERY_CRITICAL`
+  - [x] Add `AlertType.NO_THERAPY_AT_NIGHT`
+  - [x] Add `AlertSeverity.HIGH` (between CRITICAL and WARNING)
+  - [x] Add `pagerduty_severity` property to AlertSeverity enum
+  - [x] Update `alerting.py` to use new severity mapping
+  - [x] Update `state_machine.py` to use SPO2_CRITICAL and DISCONNECT
+  - [x] Removed legacy SPO2_LOW and BLE_DISCONNECT (no backward compat needed)
+- [x] Update `config.py` with alert config structure
+  - [x] Add `TherapyModeConfig` dataclass (threshold, duration, enabled)
+  - [x] Add `SleepHoursConfig` dataclass with `is_sleep_hours()` method
+  - [x] Add config classes: `SpO2CriticalAlertConfig`, `SpO2WarningAlertConfig`, `HRAlertConfig`, `DisconnectAlertConfig`, `NoTherapyAtNightAlertConfig`, `BatteryAlertConfig`
+  - [x] Add `AlertsConfig` container with all alert configs
+  - [x] Add `alerts` field to main `Config` class
+  - [x] Verified nested dataclass loading works correctly
+  - [x] Added `alerts` section to config.yaml with all defaults
+
+### 10.2 Alert Evaluation Logic
+- [x] Create `alert_evaluator.py` module
+  - [x] `AlertEvaluator` class with `evaluate()` method
+  - [x] `_evaluate_spo2()` - check SpO2 thresholds (critical/warning)
+  - [x] `_evaluate_hr()` - check HR thresholds (high/low)
+  - [x] `_evaluate_disconnect()` - check disconnect escalation
+  - [x] `_evaluate_battery()` - check battery thresholds
+  - [x] `_evaluate_no_therapy_at_night()` - check sleep hours compliance
+- [x] Track duration counters via `AlertConditionTracker` class
+  - [x] Start/reset/duration_seconds methods for each condition
+  - [x] Deduplication via `fired_alerts` dict with cooldown
+- [x] Implement sleep hours logic
+  - [x] `SleepHoursConfig.is_sleep_hours()` handles overnight ranges
+  - [x] Escalate severity: info_minutes → warning_minutes
+  - [x] Reset when therapy turns ON or sleep hours end
+- [x] All conditions auto-clear when values recover
+
+### 10.3 AlertManager Updates
+- [x] Update `AlertManager` to use new alert types
+- [x] Map severity to PagerDuty using `AlertSeverity.pagerduty_severity` property
+  - [x] critical → "critical"
+  - [x] high → "error"
+  - [x] warning → "warning"
+  - [x] info → "info"
+- [x] Alert deduplication handled in AlertEvaluator via `AlertConditionTracker`
+
+### 10.4 State Machine Integration
+- [x] Import `AlertEvaluator` in state_machine.py
+- [x] Create `AlertEvaluator` instance in `__init__`
+- [x] Add `_evaluate_alerts()` method that calls evaluator
+- [x] Call `_evaluate_alerts()` in evaluation cycle
+- [x] Store triggered alerts to database
+- [x] Route alerts to AlertManager based on severity
+
+### 10.5 Configuration Updates
+- [x] Update `config.yaml` with new alerts section
+- [x] Add example values for all alert thresholds
+- [x] Update `save_config()` to persist alerts section to YAML
+- [-] Maintain backward compatibility with old threshold format (not needed)
+- [ ] Update `config.example.yaml` as template
+
+### 10.6 Web Dashboard Updates
+- [x] Update Settings page for new alert configuration
+  - [x] SpO2 Critical thresholds (therapy on/off)
+  - [x] SpO2 Warning thresholds
+  - [x] HR High/Low thresholds
+  - [x] Disconnect escalation times
+  - [x] Battery thresholds
+  - [x] No Therapy at Night (sleep hours, escalation times)
+- [x] Add therapy mode enable/disable toggles
+- [x] Update API endpoints for new config structure
+  - [x] GET /api/config returns alerts config
+  - [x] PUT /api/config accepts and saves alerts config
+- [ ] Update dashboard to show current therapy mode
+
+### 10.7 Testing
+- [ ] Unit tests for alert evaluator
+- [ ] Test therapy ON vs OFF threshold differences
+- [ ] Test disconnect escalation timing
+- [ ] Test battery alerts
+- [ ] Integration test with mock data
+
+---
+
+## Phase 11: Documentation & Training
+
+### 11.1 Documentation
+- [x] Update DESIGN.md with alerting design
 - [ ] Create README.md with quick start
 - [ ] Document configuration options
 - [ ] Document API endpoints
 - [ ] Create troubleshooting guide
 
-### 10.2 Operational Runbooks
+### 11.2 Operational Runbooks
 - [ ] Daily monitoring checklist
 - [ ] Responding to SpO2 alarm
 - [ ] Responding to BLE disconnect
@@ -577,7 +671,7 @@
 - [ ] Restarting the service
 - [ ] Updating the software
 
-### 10.3 Family Training
+### 11.3 Family Training
 - [ ] Dashboard walkthrough
 - [ ] Alert response procedure
 - [ ] Oximeter placement/charging
@@ -589,64 +683,42 @@
 
 Priority order for next development session:
 
-1. ~~**Create project structure** - Set up src/ directory and requirements.txt~~ [x] Done
-2. ~~**Install dependencies** - Get python-kasa, pygame, flask, etc.~~ [x] Done
-3. ~~**Implement models.py** - Data classes and enums~~ [x] Done
-4. ~~**Implement config.py** - Configuration loader with config.yaml template~~ [x] Done
-5. ~~**Create mock/simulation framework** - `src/mocks.py`~~ [x] Done
-   - `MockBLEReader` - Generates realistic SpO2 (92-99%), HR (60-90 bpm) with occasional dips below 90%
-   - `MockAVAPSMonitor` - Simulates power readings, can toggle state
-   - `MockScenarioRunner` - Pre-built scenarios for testing alarm conditions
-   - Enable via `MOCK_HARDWARE=true` env var or `mock_mode: true` in config
-6. ~~**Convert test_working.py to ble_reader.py** - Real implementation `[H]`~~ [x] Done
-7. ~~**Implement avaps_monitor.py** - Real Kasa integration~~ [x] Done
-   - AVAPSMonitor class with python-kasa
-   - discover_plugs() for network discovery
-   - get_monitor() factory function
-   - Mock tests pass, hardware tests pending `[H]`
-8. ~~**Implement database.py** - SQLite persistence layer~~ [x] Done
-9. ~~**Implement alerting.py** - Audio + PagerDuty integration~~ [x] Done
-    - AudioAlert class for local audio
-    - PagerDutyClient for remote alerting
-    - HealthchecksClient for heartbeat
-    - AlertManager to coordinate all
-10. ~~**Implement state_machine.py** - Core monitoring logic~~ [x] Done
-    - O2MonitorStateMachine class
-    - All state transitions implemented
-    - Component integration
-11. ~~**Implement main.py** - Entry point and integration~~ [x] Done
-    - Full application startup
-    - Signal handling
-    - Graceful shutdown
-    - Web server integration
-12. ~~**Web dashboard** (Phase 6)~~ [x] Done
-    - Flask application with blueprints
-    - Authentication with bcrypt + rate limiting
-    - Dashboard, History, Alerts, Settings pages
-    - REST API for real-time data
-    - Chart.js visualizations
-    - Responsive design
+### Completed Phases (1-6)
+- ~~**Phases 1-6**: Core infrastructure, device integration, database, alerting, state machine, web dashboard~~ [x] All Done
 
-**Remaining tasks requiring user action:**
+### Phase 10: Enhanced Alerting System - MOSTLY COMPLETE
 
-13. **Create user account** for web dashboard login
-    - Generate password hash: `python -c "import bcrypt; print(bcrypt.hashpw(b'yourpassword', bcrypt.gensalt()).decode())"`
-    - Add to config.yaml under `auth.users`
-14. **Set up external services** (accounts needed)
-    - PagerDuty account and routing key (optional - configure via Settings page)
-    - Healthchecks.io account and ping URL (optional - configure via Settings page)
-15. **Hardware testing** `[H]`
-    - Test Kasa KP115 plug: `python src/avaps_monitor.py --discover`
-    - Test audio playback: `sudo apt install libsdl2-mixer-2.0-0`
-16. **Create alarm sounds** `[H]`
-    - Place alarm.wav and alert.wav in sounds/ directory
-17. **Phase 8: Deployment** - systemd service, installation script
+1. ~~**Update models.py** with new alert types and severities~~ [x] Done
+2. ~~**Update config.py** with new alert config structure~~ [x] Done
+3. ~~**Create alert_evaluator.py** module~~ [x] Done
+4. ~~**Update AlertManager** to use new alert types~~ [x] Done
+5. ~~**Update state_machine.py** to use alert evaluator~~ [x] Done
+6. ~~**Update Settings page** for new alert configuration~~ [x] Done
+7. ~~**Update API endpoints** for new config structure~~ [x] Done
+
+### Remaining Phase 10 Tasks
+- [ ] Update dashboard to show current therapy mode indicator
+- [ ] Unit tests for alert evaluator
+- [ ] Integration testing with hardware
+
+### Remaining Setup Tasks (User Action Needed)
+
+7. ~~**Create alarm sounds**~~ - Not needed, tones generated programmatically
+8. **Phase 8: Deployment** - systemd service, installation script
+
+### Completed Setup Tasks
+- [x] User account created for web dashboard
+- [x] PagerDuty configured (routing key in config.yaml)
+- [x] Healthchecks.io configured (ping URL in config.yaml)
+- [x] Kasa smart plug discovered (192.168.50.10)
+- [x] Power thresholds tuned (on: 5.0W, off: 4.0W)
 
 ---
 
 ## Notes
 
 - Device MAC: `C8:F1:6B:56:7B:F1`
+- Kasa Smart Plug IP: `192.168.50.10`
 - BLE library: BLE-GATT (not bleak/bluepy)
 - Device must be "trusted" not "paired" in bluetoothctl
 - Virtual env needs `--system-site-packages` for GLib
@@ -655,6 +727,8 @@ Priority order for next development session:
 - **pip upgrade**: Upgraded pip to 25.3 (old 20.3.4 had TOML parsing bugs)
 - **BLE command 0x17**: Returns current real-time reading only (not stored data)
 - **Trend analysis important**: Gradual SpO2 decline (94→93→92→91→90) more clinically significant than sudden drop (97→82 = likely sensor artifact)
+- **Flask caching**: Always restart app after modifying web files
+- **GitHub repo**: https://github.com/dmattox-sparkcodelabs/02Monitor
 
 ---
 
@@ -671,7 +745,75 @@ Priority order for next development session:
 - Added SpO2 threshold zones on charts (red <90%, yellow 90-92%)
 - Added HR threshold zones on charts (red <50/>120, yellow 50-60/100-120)
 - **Added automatic BLE reconnection** - reconnects within 5 seconds if connection drops
-- **Pending**: Kasa smart plug IP needs configuration (192.168.1.100 timing out)
-- **Pending**: Install libsdl2-mixer for audio alerts: `sudo apt install libsdl2-mixer-2.0-0`
 
-*Last Updated: 2026-01-11*
+---
+
+### Session 2026-01-12 - Kasa Integration & Alerting Design
+- Discovered Kasa smart plug at 192.168.50.10 (config had wrong IP)
+- Tuned AVAPS power thresholds: on_watts=5.0, off_watts=4.0 (tested with CPAP)
+- Changed BLE read interval from 10s to 5s for faster response
+- Changed late reading threshold from 15s to 30s to reduce false warnings
+- Set up GitHub repository and pushed code
+- Configured PagerDuty (routing key) and Healthchecks.io (ping URL)
+- Fixed Settings page to show PagerDuty/Healthchecks values
+- Fixed test alert to use `trigger_alarm()` instead of `trigger_local_only()`
+- Removed unnecessary "Configured/Not Configured" indicators from Settings
+- Added Test Alert button to Settings page
+- **Designed therapy-aware multi-severity alerting system:**
+  - Different thresholds for therapy ON (night) vs OFF (day)
+  - Alert types: spo2_critical, spo2_warning, hr_high, hr_low, disconnect, battery
+  - Severity levels: critical, high, warning, info
+  - Disconnect alerts escalate over time (info → warning → high)
+  - All configurable via config.yaml without code changes
+- Updated DESIGN.md with new alerting design
+- Added Phase 10 to TODO.md with implementation plan
+
+**Completed**: Installed libsdl2-mixer-2.0-0 and espeak for audio alerts
+
+---
+
+### Session 2026-01-12 Afternoon - Enhanced Alerting Implementation
+- Implemented Phase 10 therapy-aware alerting system:
+  - **models.py**: Added new AlertType enums (SPO2_CRITICAL, SPO2_WARNING, HR_HIGH, HR_LOW, DISCONNECT, NO_THERAPY_AT_NIGHT, BATTERY_WARNING, BATTERY_CRITICAL), added HIGH severity, removed legacy SPO2_LOW and BLE_DISCONNECT
+  - **config.py**: Added TherapyModeConfig, SleepHoursConfig (with is_sleep_hours() for overnight ranges), and all alert config dataclasses. Updated save_config() to persist alerts section.
+  - **alert_evaluator.py**: New module with AlertConditionTracker for duration tracking and AlertEvaluator for threshold evaluation with deduplication
+  - **state_machine.py**: Integrated AlertEvaluator, added _evaluate_alerts() method
+  - **alerting.py**: Updated severity mapping to use pagerduty_severity property
+- Updated Settings page (settings.html, settings.js) with all new alert configuration fields:
+  - SpO2 Critical/Warning with therapy ON/OFF thresholds
+  - HR High/Low thresholds
+  - Disconnect alert escalation times
+  - No Therapy at Night with sleep hours and escalation
+  - Battery warning/critical thresholds
+- Updated API endpoints (api.py):
+  - GET /api/config now returns full alerts config structure
+  - PUT /api/config now accepts and saves alerts config
+- Tested config save/load cycle - all fields persist correctly
+
+---
+
+### Session 2026-01-12 Evening - Settings Table & Audio Alerts
+- Refactored Settings page to use table format for all alerts
+- Created unified AlertItemConfig pattern: enabled, threshold, duration, severity, bypass_on_therapy
+- Split SpO2 Critical into two alerts:
+  - **SpO2 Critical (Off Therapy)**: 90% threshold, 30s duration
+  - **SpO2 Critical (On Therapy)**: 85% threshold, 120s duration (more lenient during AVAPS)
+- Split No Therapy at Night into two escalation levels:
+  - **No Therapy at Night (Info)**: 30 min, info severity
+  - **No Therapy at Night (Urgent)**: 60 min, high severity
+- Fixed table CSS for better layout (no more wrapping units)
+- Created start.sh and stop.sh scripts for easier app management
+- **Implemented audio alerts with programmatic tone generation:**
+  - No external sound files needed - tones generated using pygame + pure Python
+  - Different tone patterns per severity:
+    - Critical: Fast triple beeps at 880 Hz
+    - High: Double beeps at 660 Hz
+    - Warning: Slower single beeps at 440 Hz
+    - Info: Low single tone at 330 Hz
+  - Installed espeak for TTS
+  - Alert messages spoken: "Warning! Oxygen level critical at 85 percent."
+  - Critical/High alerts repeat (tones + TTS) every 30 seconds until resolved
+- Installed libsdl2-mixer-2.0-0 for pygame audio support
+- Updated config.py, alert_evaluator.py, api.py, settings.js for new alert structure
+
+*Last Updated: 2026-01-12*

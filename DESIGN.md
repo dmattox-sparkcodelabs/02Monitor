@@ -1,10 +1,16 @@
 # O2 Monitoring System Design Document
 
-## Life-Safety Monitoring for OHS Patient
+> **DISCLAIMER: NOT FOR MEDICAL USE**
+>
+> This project is a proof of concept and educational exercise only. It is NOT a certified medical device and should NOT be relied upon for medical monitoring, diagnosis, or treatment decisions. This system has not been validated, tested, or approved for clinical use. Do not use this system as a substitute for professional medical care or FDA-approved monitoring equipment. The authors assume no liability for any use of this software.
 
-**Version:** 1.1
-**Date:** 2026-01-11
-**Status:** Draft (Updated after BLE testing)
+---
+
+## Life-Safety Monitoring for OHS Patient (Proof of Concept)
+
+**Version:** 1.3
+**Date:** 2026-01-12
+**Status:** Implementation Complete (therapy-aware alerting system implemented)
 
 ---
 
@@ -170,42 +176,123 @@ class AVAPSState(Enum):
 
 ### 3.3 Alert System (`alerting.py`)
 
-**Purpose:** Deliver alerts through multiple channels with appropriate urgency.
+**Purpose:** Deliver alerts through multiple channels with appropriate urgency, with context-aware thresholds based on therapy state.
 
-**Alert Channels:**
+**Design Philosophy:**
+- **Therapy-aware alerting**: Different thresholds when AVAPS is ON (night/therapy mode) vs OFF (day mode)
+- **Configurable without code changes**: All alert types, thresholds, and behaviors defined in config.yaml
+- **Multi-severity**: Maps to PagerDuty severity levels (critical, high/error, warning, info)
+- **Graduated response**: Disconnect alerts escalate from info → warning → high over time
 
-#### 3.3.1 Local Alert (Pi Audio)
+#### 3.3.1 Alert Types and Severity
+
+| Alert Type | Severity | Description | Therapy OFF | Therapy ON |
+|------------|----------|-------------|-------------|------------|
+| `spo2_critical` | critical | Dangerously low SpO2 | <90% for 30s | <85% for 120s |
+| `spo2_warning` | high | SpO2 entering warning zone | <92% for 60s | Disabled |
+| `hr_high` | high | Heart rate too high | >120 BPM for 60s | Disabled |
+| `hr_low` | high | Heart rate too low | <50 BPM for 60s | Disabled |
+| `disconnect` | escalating | Oximeter disconnected | info→warn→high | Disabled |
+| `no_therapy_at_night` | escalating | AVAPS not in use during sleep hours | info→warning | N/A |
+| `battery_warning` | warning | Battery getting low | <25% | <25% |
+| `battery_critical` | high | Battery critically low | <10% | <10% |
+
+**Sleep Hours and Therapy Compliance:**
+
+The system tracks "sleep hours" (configurable, default 10pm-7am). If AVAPS is OFF during sleep hours, alerts escalate over time to catch situations where the patient may have gone to bed without starting therapy.
+
+| Condition | Duration | Alert Type | Severity |
+|-----------|----------|------------|----------|
+| Sleep hours + AVAPS OFF | 30 min | no_therapy_at_night | info |
+| Sleep hours + AVAPS OFF | 60 min | no_therapy_at_night | warning |
+
+**Rationale:**
+- **30 min (info)**: Patient may still be awake or getting ready for bed
+- **60 min (warning)**: More likely patient is sleeping without therapy - family should check
+
+**Therapy Context Rationale:**
+- **Therapy ON (night mode)**: Patient is using AVAPS BiPAP therapy, sensor may slip during sleep. Use more lenient SpO2 threshold (85%) with longer duration (120s) to avoid false alarms from sensor displacement. Disable HR and disconnect alerts since sensor charging is expected.
+- **Therapy OFF (day mode)**: Patient may fall asleep without therapy. Strict thresholds are critical - any sustained desaturation requires immediate attention.
+- **Sleep hours + no therapy**: Informational alert to notify family that patient may be sleeping without BiPAP.
+
+#### 3.3.2 Alert Channels
+
+**Local Alert (Pi Audio):**
 - Powered PC speakers connected to Pi 3.5mm audio jack
-- Plays loud, repeating alarm sound via `pygame.mixer`
-- Optional TTS announcement: "Medical alert. Check on Dad immediately."
+- Programmatically generated alarm tones (no external sound files needed)
+- Different tone patterns for each severity level:
+  - **Critical**: Fast triple beeps at 880 Hz (high pitched, urgent)
+  - **High**: Double beeps at 660 Hz
+  - **Warning**: Slower single beeps at 440 Hz
+  - **Info**: Low single tone at 330 Hz
+- TTS announcements via espeak describe the issue:
+  - "Warning! Oxygen level critical at 85 percent."
+  - "Attention. Heart rate high at 130 beats per minute."
+  - "Attention. Oxygen monitor disconnected."
+- Critical/High alerts repeat (tones + TTS) every 30 seconds until resolved or silenced
 - No internet dependency - works offline
-- Can be silenced via dashboard or keyboard input
+- Can be silenced via dashboard
 - Volume configurable in config.yaml
 
-#### 3.3.2 Local Alert - Alexa (Optional)
+**Local Alert - Alexa (Optional):**
 - Secondary/supplemental for announcements in other rooms
 - Uses Alexa Routine triggers or Notify Me skill
 - Not relied upon for primary alerting (requires internet)
 
-#### 3.3.3 Remote Alert (PagerDuty)
-- Creates high-urgency incident
+**Remote Alert (PagerDuty):**
+- Severity-based incident creation
 - Notifies primary contact (son) first
 - Escalates to secondary (sister) if not acknowledged
-- Includes: SpO2 level, duration, AVAPS state, timestamp
+- Includes: SpO2 level, HR, duration, AVAPS state, timestamp
+- Severity mapping:
+  - `critical` → PagerDuty critical (phone call immediately)
+  - `high` → PagerDuty error (push notification, SMS)
+  - `warning` → PagerDuty warning (push notification)
+  - `info` → PagerDuty info (logged, no notification by default)
+
+#### 3.3.3 Disconnect Alert Escalation
+
+When the oximeter disconnects during therapy OFF mode:
+
+| Duration | Severity | Action |
+|----------|----------|--------|
+| 0 min | info | Log event, dashboard shows disconnected |
+| 2 hours | warning | PagerDuty warning - check on device |
+| 3 hours | high | PagerDuty error - urgent check needed |
+
+During therapy ON mode, disconnect alerts are disabled since the patient is expected to be charging the sensor while using AVAPS.
 
 **Key Classes:**
 ```python
+# AlertManager (alerting.py) - Handles alert delivery
 class AlertManager:
-    def __init__(self, config: AlertConfig)
+    def __init__(self, config: Config)
     async def trigger_alarm(self, alert: Alert) -> None
     async def trigger_local_only(self, alert: Alert) -> None
     async def resolve_alert(self, alert_id: str) -> None
-    async def silence_alerts(self, duration_minutes: int) -> None
+    def silence(self, duration_minutes: int) -> None
+    def unsilence(self) -> None
 
     @property
     def is_silenced(self) -> bool
     @property
     def active_alerts(self) -> List[Alert]
+
+# AlertEvaluator (alert_evaluator.py) - Evaluates conditions and generates alerts
+class AlertEvaluator:
+    def __init__(self, config: AlertsConfig)
+    def evaluate(self, reading: OxiReading, avaps_state: AVAPSState,
+                 ble_connected: bool) -> List[Alert]
+    # Internal methods for each alert type:
+    # _evaluate_spo2(), _evaluate_hr(), _evaluate_disconnect(),
+    # _evaluate_battery(), _evaluate_no_therapy_at_night()
+
+# AlertConditionTracker (alert_evaluator.py) - Tracks duration-based conditions
+class AlertConditionTracker:
+    def start_condition(self, condition_key: str)
+    def reset_condition(self, condition_key: str)
+    def duration_seconds(self, condition_key: str) -> float
+    def can_fire(self, alert_type: AlertType) -> bool  # Deduplication with cooldown
 
 @dataclass
 class Alert:
@@ -219,13 +306,24 @@ class Alert:
     avaps_state: AVAPSState
 
 class AlertSeverity(Enum):
-    CRITICAL = "critical"  # SpO2 alarm
-    WARNING = "warning"    # BLE disconnect
-    INFO = "info"          # System notifications
+    CRITICAL = "critical"  # SpO2 critical - immediate phone call
+    HIGH = "high"          # HR out of range, extended disconnect
+    WARNING = "warning"    # SpO2 warning, battery low
+    INFO = "info"          # Reconnected, system notifications
+
+    @property
+    def pagerduty_severity(self) -> str:
+        # Maps HIGH -> "error", others map directly
 
 class AlertType(Enum):
-    SPO2_LOW = "spo2_low"
-    BLE_DISCONNECT = "ble_disconnect"
+    SPO2_CRITICAL = "spo2_critical"
+    SPO2_WARNING = "spo2_warning"
+    HR_HIGH = "hr_high"
+    HR_LOW = "hr_low"
+    DISCONNECT = "disconnect"
+    NO_THERAPY_AT_NIGHT = "no_therapy_at_night"
+    BATTERY_WARNING = "battery_warning"
+    BATTERY_CRITICAL = "battery_critical"
     SYSTEM_ERROR = "system_error"
     TEST = "test"
 ```
@@ -456,16 +554,39 @@ class O2MonitorStateMachine:
     def low_spo2_duration(self) -> Optional[timedelta]
 ```
 
-### 4.4 Decision Matrix
+### 4.4 Decision Matrix (Therapy-Aware)
 
-| AVAPS Power | BLE Connected | SpO2 | Duration <90% | Action |
-|-------------|---------------|------|---------------|--------|
-| On (>3W) | Yes | Any | N/A | Silent monitoring (therapy active) |
-| Off (<2W) | Yes | ≥90% | N/A | Normal monitoring |
-| Off (<2W) | Yes | <90% | <30s | Warning state, countdown |
-| Off (<2W) | Yes | <90% | ≥30s | **ALARM: Local + PagerDuty** |
-| Any | No | N/A | N/A | Reconnecting, alert if >3 min |
-| Unknown | No | N/A | N/A | Alert family (device issue) |
+**Therapy OFF (AVAPS off - daytime/no treatment):**
+
+| Condition | Duration | Alert Type | Severity |
+|-----------|----------|------------|----------|
+| SpO2 < 90% | ≥30s | spo2_critical | critical |
+| SpO2 < 92% | ≥60s | spo2_warning | high |
+| HR > 120 | ≥60s | hr_high | high |
+| HR < 50 | ≥60s | hr_low | high |
+| BLE disconnected | 0 min | disconnect | info |
+| BLE disconnected | 2 hours | disconnect | warning |
+| BLE disconnected | 3 hours | disconnect | high |
+| Battery < 25% | immediate | battery_warning | warning |
+| Battery < 10% | immediate | battery_critical | high |
+
+**Therapy ON (AVAPS on - nighttime treatment):**
+
+| Condition | Duration | Alert Type | Severity |
+|-----------|----------|------------|----------|
+| SpO2 < 85% | ≥120s | spo2_critical | critical |
+| SpO2 warning | - | *disabled* | - |
+| HR alerts | - | *disabled* | - |
+| BLE disconnected | - | *disabled* | - |
+| Battery < 25% | immediate | battery_warning | warning |
+| Battery < 10% | immediate | battery_critical | high |
+
+**Rationale:**
+- During therapy ON, the patient is connected to AVAPS BiPAP and likely sleeping
+- The SpO2 sensor may slip during sleep, so we use a more lenient threshold (85% vs 90%)
+- HR monitoring is disabled during therapy as readings may be affected by sleep position
+- Disconnect alerts are disabled since the sensor is expected to be charging
+- Battery alerts remain active at all times
 
 ---
 
@@ -480,32 +601,103 @@ class O2MonitorStateMachine:
 # Device Settings
 devices:
   oximeter:
-    mac_address: "AA:BB:CC:DD:EE:FF"  # Checkme O2 Max MAC
+    mac_address: "C8:F1:6B:56:7B:F1"  # Checkme O2 Max MAC (actual device)
     name: "Checkme O2 Max"
 
   smart_plug:
-    ip_address: "192.168.1.100"       # Kasa KP115 static IP
+    ip_address: "192.168.50.10"       # Kasa KP115 IP (actual network)
     name: "AVAPS Power Monitor"
 
-# Monitoring Thresholds
+# Monitoring Thresholds (legacy - see alerts section for new config)
 thresholds:
-  spo2:
-    alarm_level: 90                    # SpO2 % to trigger alarm
-    alarm_duration_seconds: 30         # How long before alarm
-    warning_level: 92                  # SpO2 % for warning log
-
   avaps:
-    on_watts: 3.0                      # Power level = AVAPS on
-    off_watts: 2.0                     # Power level = AVAPS off
+    on_watts: 5.0                      # Power level = AVAPS on (tuned for BiPAP)
+    off_watts: 4.0                     # Power level = AVAPS off
 
   ble:
-    reconnect_alert_minutes: 3         # Alert if disconnected this long
+    read_interval_seconds: 5           # How often to request readings
     max_reconnect_attempts: null       # null = infinite
 
-# Alerting
+# Alert Configuration - Therapy-Aware Multi-Severity System
+# Each alert can have different thresholds for therapy ON (night) vs OFF (day)
+alerts:
+  # CRITICAL: SpO2 dangerously low - requires immediate intervention
+  spo2_critical:
+    enabled: true
+    severity: critical
+    therapy_off:
+      threshold: 90                    # Trigger below this SpO2 %
+      duration_seconds: 30             # Must be sustained for this duration
+    therapy_on:
+      enabled: true                    # Still alert during therapy, but lenient
+      threshold: 85                    # Lower threshold (sensor may slip)
+      duration_seconds: 120            # Longer duration (2 min)
+
+  # HIGH: SpO2 warning zone - early warning before critical
+  spo2_warning:
+    enabled: true
+    severity: high
+    therapy_off:
+      threshold: 92                    # Warn below this SpO2 %
+      duration_seconds: 60             # 1 minute sustained
+    therapy_on:
+      enabled: false                   # Disable during therapy
+
+  # HIGH: Heart rate too high
+  hr_high:
+    enabled: true
+    severity: high
+    therapy_off:
+      threshold: 120                   # BPM upper limit
+      duration_seconds: 60
+    therapy_on:
+      enabled: false                   # Disable during therapy
+
+  # HIGH: Heart rate too low
+  hr_low:
+    enabled: true
+    severity: high
+    therapy_off:
+      threshold: 50                    # BPM lower limit
+      duration_seconds: 60
+    therapy_on:
+      enabled: false                   # Disable during therapy
+
+  # ESCALATING: Oximeter disconnected - escalates over time
+  disconnect:
+    enabled: true
+    therapy_off:
+      info_minutes: 0                  # Immediate info-level notification
+      warning_minutes: 120             # After 2 hours: warning
+      high_minutes: 180                # After 3 hours: high priority
+    therapy_on:
+      enabled: false                   # Disable during therapy (charging)
+
+  # WARNING: Battery getting low
+  battery_warning:
+    enabled: true
+    threshold_percent: 25
+    severity: warning
+
+  # HIGH: Battery critically low
+  battery_critical:
+    enabled: true
+    threshold_percent: 10
+    severity: high
+
+  # ESCALATING: No therapy during sleep hours
+  no_therapy_at_night:
+    enabled: true
+    sleep_hours:
+      start: "22:00"                   # 10 PM
+      end: "07:00"                     # 7 AM
+    info_minutes: 30                   # Info alert after 30 min
+    warning_minutes: 60                # Warning alert after 1 hour
+
+# Alerting Channels
 alerting:
   pagerduty:
-    routing_key: "${PAGERDUTY_ROUTING_KEY}"  # From env variable
+    routing_key: "${PAGERDUTY_ROUTING_KEY}"  # From env or config
     service_name: "O2 Monitor"
 
   local_audio:
@@ -878,6 +1070,8 @@ PUT  /api/config          → Update thresholds (admin only)
 
 ```
 /home/pi/o2-monitor/
+├── start.sh                # Start the application
+├── stop.sh                 # Stop the application (kills all python)
 ├── main.py                 # Entry point, main loop
 ├── state_machine.py        # Core monitoring state machine
 ├── ble_reader.py           # Checkme O2 Max BLE integration
@@ -909,9 +1103,9 @@ PUT  /api/config          → Update thresholds (admin only)
 │       └── settings.html
 ├── data/
 │   └── history.db          # SQLite database
-├── sounds/
-│   ├── alarm.wav           # Primary alarm sound
-│   └── alert.wav           # Warning/notification sound
+├── sounds/                 # (Empty - tones generated programmatically)
+├── start.sh                # Start the application
+├── stop.sh                 # Stop the application
 ├── logs/
 │   └── o2monitor.log       # Application logs
 └── scripts/
@@ -924,31 +1118,32 @@ PUT  /api/config          → Update thresholds (admin only)
 
 ## 11. Implementation Phases
 
-### Phase 1: Core Monitoring
+### Phase 1: Core Monitoring ✅
 - [x] Set up Raspberry Pi environment
 - [x] Test BLE connection to Checkme O2 Max *(Completed 2026-01-11 - see Appendix D)*
-- [ ] Test Kasa KP115 power reading
-- [ ] Implement basic state machine
-- [ ] Add SQLite database for readings
+- [x] Test Kasa KP115 power reading *(Completed 2026-01-12 - IP: 192.168.50.10)*
+- [x] Implement basic state machine
+- [x] Add SQLite database for readings
 
-### Phase 2: Alerting
-- [ ] Integrate PagerDuty API
-- [ ] Implement Alexa alerting
-- [ ] Set up Healthchecks.io heartbeat
-- [ ] Test alarm sequences end-to-end
+### Phase 2: Alerting ✅
+- [x] Integrate PagerDuty API
+- [-] Implement Alexa alerting (optional, deferred)
+- [x] Set up Healthchecks.io heartbeat
+- [x] Implement local audio with generated tones + TTS
+- [x] **Implement therapy-aware multi-severity alerting**
 
-### Phase 3: Web Dashboard
-- [ ] Create Flask application structure
-- [ ] Implement authentication
-- [ ] Build real-time dashboard
-- [ ] Add historical graphs
-- [ ] Create settings panel
+### Phase 3: Web Dashboard ✅
+- [x] Create Flask application structure
+- [x] Implement authentication
+- [x] Build real-time dashboard
+- [x] Add historical graphs
+- [x] Create settings panel
 
 ### Phase 4: Hardening
-- [ ] Add comprehensive error handling
-- [ ] Implement graceful degradation
+- [x] Add comprehensive error handling
+- [x] Implement graceful degradation (partial)
 - [ ] Set up systemd service for auto-start
-- [ ] Configure log rotation
+- [x] Configure log rotation
 - [ ] Security audit
 
 ### Phase 5: Testing & Deployment
@@ -957,6 +1152,14 @@ PUT  /api/config          → Update thresholds (admin only)
 - [ ] Family training on dashboard
 - [ ] Go-live monitoring
 - [ ] Document runbooks
+
+### Phase 6: Enhanced Alerting (New)
+- [ ] Implement therapy-aware alert evaluation
+- [ ] Add HR monitoring alerts (high/low)
+- [ ] Implement disconnect alert escalation
+- [ ] Add battery level alerts
+- [ ] Update config structure for new alert types
+- [ ] Update Settings page for new alert configuration
 
 ---
 
@@ -1330,6 +1533,64 @@ The file `test_working.py` in the project root contains a verified working imple
 # Or activate venv first:
 source venv/bin/activate && python test_working.py
 ```
+
+---
+
+## Appendix E: Development Session Learnings (2026-01-12)
+
+This appendix documents key findings and tuned values from the development and testing session.
+
+### E.1 Device Configuration
+
+**Kasa Smart Plug:**
+- Discovered IP: `192.168.50.10` (initial config had wrong IP 192.168.1.100)
+- Use `kasa discover` or web Settings page to find plug on network
+
+**Power Thresholds (tested with BiPAP/CPAP):**
+- Standby power: ~3.2W
+- Running power: ~6.4W
+- Tuned thresholds: `on_watts: 5.0`, `off_watts: 4.0`
+
+**BLE Polling:**
+- Changed from 10-second to 5-second interval for more responsive monitoring
+- Late reading threshold set to 30 seconds in dashboard (was 15s)
+
+### E.2 Flask Caching Behavior
+
+Flask caches templates and static files. After modifying any files in `src/web/`, the application must be restarted:
+
+```bash
+./stop.sh && sleep 2 && ./start.sh
+```
+
+Or manually:
+```bash
+pkill -f "src.main"; sleep 2; source venv/bin/activate && nohup python -m src.main --config config.yaml > /tmp/o2monitor.log 2>&1 &
+```
+
+### E.3 Chart Data Limits
+
+Dashboard chart data limits were adjusted based on time range:
+- 1 hour: 500 readings (5-second intervals)
+- 6 hours: 3000 readings
+- 24 hours: 10000 readings
+
+### E.4 External Service Integration
+
+**PagerDuty:**
+- Uses Events API v2
+- Test alerts must use `trigger_alarm()` not `trigger_local_only()` to send to PagerDuty
+- Severity levels map: critical, error (high), warning, info
+
+**Healthchecks.io:**
+- Ping URL configured in Settings page
+- Heartbeat sent every 60 seconds
+
+### E.5 GitHub Repository
+
+- Repository: https://github.com/dmattox-sparkcodelabs/02Monitor
+- `config.yaml` is gitignored (contains secrets)
+- `config.example.yaml` provides template for new installations
 
 ---
 

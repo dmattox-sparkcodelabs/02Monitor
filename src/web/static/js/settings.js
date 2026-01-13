@@ -5,26 +5,35 @@
 
     // DOM Elements
     const elements = {
-        // SpO2 thresholds
-        spo2Alarm: document.getElementById('spo2-alarm'),
-        spo2Duration: document.getElementById('spo2-duration'),
-        spo2Warning: document.getElementById('spo2-warning'),
+        // Alert table
+        alertTable: document.getElementById('alert-table'),
+
+        // Sleep hours
+        sleepStart: document.getElementById('sleep-start'),
+        sleepEnd: document.getElementById('sleep-end'),
+
         // AVAPS thresholds
         avapsOn: document.getElementById('avaps-on'),
         avapsOff: document.getElementById('avaps-off'),
+
         // Audio
         audioVolume: document.getElementById('audio-volume'),
         volumeDisplay: document.getElementById('volume-display'),
+
         // PagerDuty
         pagerdutyKey: document.getElementById('pagerduty-key'),
+
         // Healthchecks
         healthchecksUrl: document.getElementById('healthchecks-url'),
+
         // Device
         plugIp: document.getElementById('plug-ip'),
         discoverPlugsBtn: document.getElementById('discover-plugs'),
         discoveredDevices: document.getElementById('discovered-devices'),
+
         // Test alert
         testAlertBtn: document.getElementById('test-alert-btn'),
+
         // Save
         saveBtn: document.getElementById('save-settings'),
         saveStatus: document.getElementById('save-status')
@@ -51,32 +60,78 @@
 
     // Populate form with config values
     function populateForm(config) {
-        // SpO2 thresholds
-        if (config.thresholds && config.thresholds.spo2) {
-            if (elements.spo2Alarm) elements.spo2Alarm.value = config.thresholds.spo2.alarm_level || 90;
-            if (elements.spo2Duration) elements.spo2Duration.value = config.thresholds.spo2.alarm_duration_seconds || 30;
-            if (elements.spo2Warning) elements.spo2Warning.value = config.thresholds.spo2.warning_level || 92;
+        // Populate alert table
+        if (config.alerts) {
+            const alertTypes = ['spo2_critical_off_therapy', 'spo2_critical_on_therapy', 'spo2_warning',
+                               'hr_high', 'hr_low', 'disconnect',
+                               'no_therapy_at_night_info', 'no_therapy_at_night_high',
+                               'battery_warning', 'battery_critical'];
+
+            alertTypes.forEach(alertType => {
+                const alertData = config.alerts[alertType];
+                if (alertData) {
+                    populateAlertRow(alertType, alertData);
+                }
+            });
+
+            // Sleep hours
+            if (config.alerts.sleep_hours) {
+                setValue('sleepStart', config.alerts.sleep_hours.start);
+                setValue('sleepEnd', config.alerts.sleep_hours.end);
+            }
         }
 
         // AVAPS thresholds
         if (config.thresholds && config.thresholds.avaps) {
-            if (elements.avapsOn) elements.avapsOn.value = config.thresholds.avaps.on_watts || 3.0;
-            if (elements.avapsOff) elements.avapsOff.value = config.thresholds.avaps.off_watts || 2.0;
+            setValue('avapsOn', config.thresholds.avaps.on_watts);
+            setValue('avapsOff', config.thresholds.avaps.off_watts);
         }
 
         // Audio settings
         if (config.alerting && config.alerting.local_audio) {
-            if (elements.audioVolume) {
-                elements.audioVolume.value = config.alerting.local_audio.volume || 90;
-                updateVolumeDisplay();
-            }
+            setValue('audioVolume', config.alerting.local_audio.volume);
+            updateVolumeDisplay();
         }
 
         // Device settings
         if (config.devices && config.devices.smart_plug) {
-            if (elements.plugIp) elements.plugIp.value = config.devices.smart_plug.ip_address || '';
+            setValue('plugIp', config.devices.smart_plug.ip_address);
         }
+    }
 
+    // Populate a single alert row in the table
+    function populateAlertRow(alertType, data) {
+        const row = document.querySelector(`tr[data-alert="${alertType}"]`);
+        if (!row) return;
+
+        const enabledCheckbox = row.querySelector('.alert-enabled');
+        const thresholdInput = row.querySelector('.alert-threshold');
+        const durationInput = row.querySelector('.alert-duration');
+        const severitySelect = row.querySelector('.alert-severity');
+        const bypassCheckbox = row.querySelector('.alert-bypass-therapy');
+
+        if (enabledCheckbox && data.enabled !== undefined) {
+            enabledCheckbox.checked = data.enabled;
+        }
+        if (thresholdInput && data.threshold !== undefined) {
+            thresholdInput.value = data.threshold;
+        }
+        if (durationInput && data.duration_seconds !== undefined) {
+            durationInput.value = data.duration_seconds;
+        }
+        if (severitySelect && data.severity) {
+            severitySelect.value = data.severity;
+        }
+        if (bypassCheckbox && data.bypass_on_therapy !== undefined) {
+            bypassCheckbox.checked = data.bypass_on_therapy;
+        }
+    }
+
+    // Helper to set value if element exists
+    function setValue(elementName, value) {
+        if (elements[elementName] && value !== undefined && value !== null) {
+            elements[elementName].value = value;
+        }
     }
 
     // Set up event listeners
@@ -110,9 +165,7 @@
         try {
             const response = await fetch('/api/alerts/test', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 credentials: 'same-origin'
             });
 
@@ -203,9 +256,7 @@
             const response = await fetch('/api/config', {
                 credentials: 'same-origin',
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(config)
             });
 
@@ -230,49 +281,90 @@
         }
     }
 
-    // Build config object from form
+    // Build config object from form (table-based)
     function buildConfigObject() {
         const config = {
+            alerts: {},
             thresholds: {
-                spo2: {
-                    alarm_level: parseInt(elements.spo2Alarm.value),
-                    alarm_duration_seconds: parseInt(elements.spo2Duration.value),
-                    warning_level: parseInt(elements.spo2Warning.value)
-                },
                 avaps: {
-                    on_watts: parseFloat(elements.avapsOn.value),
-                    off_watts: parseFloat(elements.avapsOff.value)
+                    on_watts: parseFloat(elements.avapsOn?.value || 5.0),
+                    off_watts: parseFloat(elements.avapsOff?.value || 4.0)
                 }
             },
             alerting: {
                 local_audio: {
-                    volume: parseInt(elements.audioVolume.value)
+                    volume: parseInt(elements.audioVolume?.value || 90)
                 }
             },
             devices: {
                 smart_plug: {
-                    ip_address: elements.plugIp.value.trim()
+                    ip_address: (elements.plugIp?.value || '').trim()
                 }
             }
         };
 
+        // Build alerts from table
+        const alertTypes = ['spo2_critical_off_therapy', 'spo2_critical_on_therapy', 'spo2_warning',
+                           'hr_high', 'hr_low', 'disconnect',
+                           'no_therapy_at_night_info', 'no_therapy_at_night_high',
+                           'battery_warning', 'battery_critical'];
+
+        alertTypes.forEach(alertType => {
+            const alertData = getAlertRowData(alertType);
+            if (alertData) {
+                config.alerts[alertType] = alertData;
+            }
+        });
+
+        // Sleep hours
+        config.alerts.sleep_hours = {
+            start: elements.sleepStart?.value || '22:00',
+            end: elements.sleepEnd?.value || '07:00'
+        };
+
         // Only include PagerDuty key if provided
-        const pdKey = elements.pagerdutyKey.value.trim();
+        const pdKey = (elements.pagerdutyKey?.value || '').trim();
         if (pdKey) {
-            config.alerting.pagerduty = {
-                routing_key: pdKey
-            };
+            config.alerting.pagerduty = { routing_key: pdKey };
         }
 
         // Only include Healthchecks URL if provided
-        const hcUrl = elements.healthchecksUrl.value.trim();
+        const hcUrl = (elements.healthchecksUrl?.value || '').trim();
         if (hcUrl) {
-            config.alerting.healthchecks = {
-                ping_url: hcUrl
-            };
+            config.alerting.healthchecks = { ping_url: hcUrl };
         }
 
         return config;
+    }
+
+    // Get data from a single alert row
+    function getAlertRowData(alertType) {
+        const row = document.querySelector(`tr[data-alert="${alertType}"]`);
+        if (!row) return null;
+
+        const enabledCheckbox = row.querySelector('.alert-enabled');
+        const thresholdInput = row.querySelector('.alert-threshold');
+        const durationInput = row.querySelector('.alert-duration');
+        const severitySelect = row.querySelector('.alert-severity');
+        const bypassCheckbox = row.querySelector('.alert-bypass-therapy');
+
+        const data = {
+            enabled: enabledCheckbox ? enabledCheckbox.checked : true,
+            severity: severitySelect ? severitySelect.value : 'warning',
+            bypass_on_therapy: bypassCheckbox ? bypassCheckbox.checked : false
+        };
+
+        // Only include threshold if input exists
+        if (thresholdInput) {
+            data.threshold = parseInt(thresholdInput.value);
+        }
+
+        // Only include duration if input exists (not N/A)
+        if (durationInput) {
+            data.duration_seconds = parseInt(durationInput.value);
+        }
+
+        return data;
     }
 
     // Escape HTML to prevent XSS

@@ -29,16 +29,61 @@ class MonitorState(Enum):
 
 
 class AlertSeverity(Enum):
-    """Alert severity levels."""
-    CRITICAL = "critical"  # SpO2 alarm - immediate action required
-    WARNING = "warning"    # BLE disconnect, degraded operation
+    """Alert severity levels mapped to PagerDuty severity.
+
+    PagerDuty mapping:
+        CRITICAL -> "critical" (phone call immediately)
+        HIGH -> "error" (push notification, SMS)
+        WARNING -> "warning" (push notification)
+        INFO -> "info" (logged, no notification by default)
+    """
+    CRITICAL = "critical"  # SpO2 critical - immediate phone call
+    HIGH = "high"          # HR out of range, extended disconnect, battery critical
+    WARNING = "warning"    # SpO2 warning, short disconnect, battery low
     INFO = "info"          # System notifications, status updates
+
+    @property
+    def pagerduty_severity(self) -> str:
+        """Map to PagerDuty severity string."""
+        mapping = {
+            "critical": "critical",
+            "high": "error",
+            "warning": "warning",
+            "info": "info",
+        }
+        return mapping.get(self.value, "info")
 
 
 class AlertType(Enum):
-    """Types of alerts the system can generate."""
-    SPO2_LOW = "spo2_low"              # Oxygen saturation below threshold
-    BLE_DISCONNECT = "ble_disconnect"  # Lost connection to oximeter
+    """Types of alerts the system can generate.
+
+    Alert types are organized by category:
+    - SpO2: spo2_critical, spo2_warning
+    - Heart Rate: hr_high, hr_low
+    - Connectivity: disconnect
+    - Therapy Compliance: no_therapy_at_night
+    - Battery: battery_warning, battery_critical
+    - System: system_error, test
+    """
+    # SpO2 alerts
+    SPO2_CRITICAL = "spo2_critical"    # Dangerously low SpO2 (critical)
+    SPO2_WARNING = "spo2_warning"      # SpO2 entering warning zone (high)
+
+    # Heart rate alerts
+    HR_HIGH = "hr_high"                # Heart rate too high (high)
+    HR_LOW = "hr_low"                  # Heart rate too low (high)
+
+    # Connectivity alerts
+    DISCONNECT = "disconnect"          # Lost connection to oximeter (escalating)
+
+    # Therapy compliance alerts
+    NO_THERAPY_AT_NIGHT = "no_therapy_at_night"  # AVAPS off during sleep hours (escalating)
+
+    # Battery alerts
+    BATTERY_WARNING = "battery_warning"    # Battery getting low (warning)
+    BATTERY_CRITICAL = "battery_critical"  # Battery critically low (high)
+
+    # System alerts
     SYSTEM_ERROR = "system_error"      # Internal error
     TEST = "test"                      # Test alert
 

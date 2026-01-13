@@ -41,3 +41,6 @@ credentials.json
 # Claude Code memory
 CLAUDE.md
 config.yaml
+
+# Acknowledgment file (each user must create their own)
+ACKNOWLEDGED_NOT_FOR_MEDICAL_USE.txt

@@ -68,10 +68,124 @@ class BLEThresholdConfig:
 
 @dataclass
 class ThresholdsConfig:
-    """Threshold configuration container."""
+    """Threshold configuration container (legacy - see AlertsConfig for new system)."""
     spo2: SpO2ThresholdConfig = field(default_factory=SpO2ThresholdConfig)
     avaps: AVAPSThresholdConfig = field(default_factory=AVAPSThresholdConfig)
     ble: BLEThresholdConfig = field(default_factory=BLEThresholdConfig)
+
+
+# ==================== Unified Alert Configuration System ====================
+
+@dataclass
+class SleepHoursConfig:
+    """Configuration for sleep hours.
+
+    Attributes:
+        start: Start time in HH:MM format (24-hour)
+        end: End time in HH:MM format (24-hour)
+    """
+    start: str = "22:00"
+    end: str = "07:00"
+
+    def is_sleep_hours(self, hour: int, minute: int = 0) -> bool:
+        """Check if a given time is within sleep hours.
+
+        Handles overnight ranges (e.g., 22:00-07:00).
+        """
+        start_parts = self.start.split(":")
+        end_parts = self.end.split(":")
+        start_hour = int(start_parts[0])
+        start_min = int(start_parts[1]) if len(start_parts) > 1 else 0
+        end_hour = int(end_parts[0])
+        end_min = int(end_parts[1]) if len(end_parts) > 1 else 0
+
+        current = hour * 60 + minute
+        start = start_hour * 60 + start_min
+        end = end_hour * 60 + end_min
+
+        if start <= end:
+            # Same day range (e.g., 09:00-17:00)
+            return start <= current < end
+        else:
+            # Overnight range (e.g., 22:00-07:00)
+            return current >= start or current < end
+
+
+@dataclass
+class AlertItemConfig:
+    """Unified configuration for a single alert type.
+
+    All alerts follow the same pattern for consistency.
+
+    Attributes:
+        enabled: Whether this alert is active
+        threshold: The threshold value (meaning depends on alert type)
+        duration_seconds: How long condition must persist before alerting
+        severity: Alert severity level (critical, high, warning, info)
+        bypass_on_therapy: Skip this alert when AVAPS therapy is active
+    """
+    enabled: bool = True
+    threshold: int = 0
+    duration_seconds: int = 30
+    severity: str = "warning"
+    bypass_on_therapy: bool = False
+
+
+@dataclass
+class AlertsConfig:
+    """Container for all alert configurations.
+
+    Each alert follows a unified pattern with:
+    - enabled: on/off toggle
+    - threshold: value that triggers the alert
+    - duration_seconds: how long condition must persist
+    - severity: critical/high/warning/info
+    - bypass_on_therapy: skip during AVAPS therapy
+    """
+    # SpO2 alerts - separate thresholds for on/off therapy
+    spo2_critical_off_therapy: AlertItemConfig = field(default_factory=lambda: AlertItemConfig(
+        enabled=True, threshold=90, duration_seconds=30,
+        severity="critical", bypass_on_therapy=False  # N/A - only applies off therapy
+    ))
+    spo2_critical_on_therapy: AlertItemConfig = field(default_factory=lambda: AlertItemConfig(
+        enabled=True, threshold=85, duration_seconds=120,
+        severity="critical", bypass_on_therapy=False  # N/A - only applies on therapy
+    ))
+    spo2_warning: AlertItemConfig = field(default_factory=lambda: AlertItemConfig(
+        enabled=True, threshold=92, duration_seconds=60,
+        severity="warning", bypass_on_therapy=True
+    ))
+    hr_high: AlertItemConfig = field(default_factory=lambda: AlertItemConfig(
+        enabled=True, threshold=120, duration_seconds=60,
+        severity="high", bypass_on_therapy=True
+    ))
+    hr_low: AlertItemConfig = field(default_factory=lambda: AlertItemConfig(
+        enabled=True, threshold=50, duration_seconds=60,
+        severity="high", bypass_on_therapy=True
+    ))
+    disconnect: AlertItemConfig = field(default_factory=lambda: AlertItemConfig(
+        enabled=True, threshold=120, duration_seconds=0,  # threshold is minutes
+        severity="warning", bypass_on_therapy=True
+    ))
+    # No therapy at night - two levels for escalation
+    no_therapy_at_night_info: AlertItemConfig = field(default_factory=lambda: AlertItemConfig(
+        enabled=True, threshold=30, duration_seconds=0,  # threshold is minutes into sleep
+        severity="info", bypass_on_therapy=False  # N/A - only fires when therapy is OFF
+    ))
+    no_therapy_at_night_high: AlertItemConfig = field(default_factory=lambda: AlertItemConfig(
+        enabled=True, threshold=60, duration_seconds=0,  # threshold is minutes into sleep
+        severity="high", bypass_on_therapy=False  # N/A - only fires when therapy is OFF
+    ))
+    battery_warning: AlertItemConfig = field(default_factory=lambda: AlertItemConfig(
+        enabled=True, threshold=25, duration_seconds=0,
+        severity="warning", bypass_on_therapy=False
+    ))
+    battery_critical: AlertItemConfig = field(default_factory=lambda: AlertItemConfig(
+        enabled=True, threshold=10, duration_seconds=0,
+        severity="critical", bypass_on_therapy=False
+    ))
+    # Sleep hours for no_therapy_at_night alerts
+    sleep_hours: SleepHoursConfig = field(default_factory=SleepHoursConfig)
 
 
 @dataclass
@@ -183,6 +297,7 @@ class Config:
     mock_mode: bool = False
     devices: DevicesConfig = field(default_factory=DevicesConfig)
     thresholds: ThresholdsConfig = field(default_factory=ThresholdsConfig)
+    alerts: AlertsConfig = field(default_factory=AlertsConfig)
     alerting: AlertingConfig = field(default_factory=AlertingConfig)
     messages: MessagesConfig = field(default_factory=MessagesConfig)
     web: WebConfig = field(default_factory=WebConfig)
@@ -275,6 +390,18 @@ def _dict_to_dataclass(cls, data: Dict[str, Any]):
 
         else:
             kwargs[field_name] = value
+
+    # Special handling for AlertsConfig - convert alert items
+    if cls == AlertsConfig and data:
+        alert_fields = ['spo2_critical_off_therapy', 'spo2_critical_on_therapy', 'spo2_warning',
+                        'hr_high', 'hr_low', 'disconnect',
+                        'no_therapy_at_night_info', 'no_therapy_at_night_high',
+                        'battery_warning', 'battery_critical']
+        for alert_name in alert_fields:
+            if alert_name in data and isinstance(data[alert_name], dict):
+                kwargs[alert_name] = _dict_to_dataclass(AlertItemConfig, data[alert_name])
+        if 'sleep_hours' in data and isinstance(data['sleep_hours'], dict):
+            kwargs['sleep_hours'] = _dict_to_dataclass(SleepHoursConfig, data['sleep_hours'])
 
     return cls(**kwargs)
 
@@ -425,6 +552,33 @@ def save_config(config: Config, config_path: str = "config.yaml") -> None:
     existing['thresholds']['avaps'] = {
         'on_watts': config.thresholds.avaps.on_watts,
         'off_watts': config.thresholds.avaps.off_watts,
+    }
+
+    # Save alerts configuration (unified format)
+    def _save_alert_item(alert_cfg):
+        return {
+            'enabled': alert_cfg.enabled,
+            'threshold': alert_cfg.threshold,
+            'duration_seconds': alert_cfg.duration_seconds,
+            'severity': alert_cfg.severity,
+            'bypass_on_therapy': alert_cfg.bypass_on_therapy,
+        }
+
+    existing['alerts'] = {
+        'spo2_critical_off_therapy': _save_alert_item(config.alerts.spo2_critical_off_therapy),
+        'spo2_critical_on_therapy': _save_alert_item(config.alerts.spo2_critical_on_therapy),
+        'spo2_warning': _save_alert_item(config.alerts.spo2_warning),
+        'hr_high': _save_alert_item(config.alerts.hr_high),
+        'hr_low': _save_alert_item(config.alerts.hr_low),
+        'disconnect': _save_alert_item(config.alerts.disconnect),
+        'no_therapy_at_night_info': _save_alert_item(config.alerts.no_therapy_at_night_info),
+        'no_therapy_at_night_high': _save_alert_item(config.alerts.no_therapy_at_night_high),
+        'battery_warning': _save_alert_item(config.alerts.battery_warning),
+        'battery_critical': _save_alert_item(config.alerts.battery_critical),
+        'sleep_hours': {
+            'start': config.alerts.sleep_hours.start,
+            'end': config.alerts.sleep_hours.end,
+        },
     }
 
     existing['alerting'] = existing.get('alerting', {})

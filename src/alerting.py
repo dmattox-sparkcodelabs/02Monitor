@@ -1,7 +1,8 @@
 """Alerting system for O2 Monitor.
 
 This module handles all alert delivery mechanisms:
-- Local audio alarms via pygame
+- Local audio alarms via pygame (with generated tones)
+- Text-to-speech announcements via espeak
 - PagerDuty incident management
 - Healthchecks.io heartbeat monitoring
 - Alert silencing and deduplication
@@ -19,6 +20,7 @@ Usage:
 import asyncio
 import logging
 import os
+import subprocess
 import sys
 import time
 from datetime import datetime, timedelta
@@ -37,41 +39,75 @@ logger = logging.getLogger(__name__)
 # Try to import pygame for audio
 try:
     import pygame
+    import array
+    import math
     PYGAME_AVAILABLE = True
 except ImportError:
     PYGAME_AVAILABLE = False
     logger.warning("pygame not available - audio alerts disabled")
 
+# Check for espeak
+ESPEAK_AVAILABLE = os.path.exists("/usr/bin/espeak") or os.path.exists("/usr/bin/espeak-ng")
+
 
 class AudioAlert:
-    """Local audio alerting via pygame.
+    """Local audio alerting via pygame with generated tones and TTS.
 
     Handles playing alarm sounds through the Raspberry Pi audio output.
-    Supports repeating alarms, volume control, and TTS announcements.
+    Generates alarm tones programmatically - no external sound files needed.
+    Supports TTS announcements via espeak.
     """
+
+    # Tone configurations for different severities
+    TONE_CONFIGS = {
+        'critical': {
+            'frequency': 880,      # High A note
+            'duration_ms': 200,    # Short beeps
+            'pause_ms': 100,       # Quick pause between beeps
+            'pattern': [1, 1, 1, 0, 1, 1, 1],  # Fast triple-beep pattern
+        },
+        'high': {
+            'frequency': 660,      # E note
+            'duration_ms': 400,    # Medium beeps
+            'pause_ms': 200,       # Medium pause
+            'pattern': [1, 1, 0, 1, 1],  # Double-beep pattern
+        },
+        'warning': {
+            'frequency': 440,      # A note
+            'duration_ms': 500,    # Longer beeps
+            'pause_ms': 500,       # Longer pause
+            'pattern': [1, 0, 1],  # Single beeps
+        },
+        'info': {
+            'frequency': 330,      # E note (lower)
+            'duration_ms': 300,
+            'pause_ms': 700,
+            'pattern': [1],        # Single tone
+        },
+    }
 
     def __init__(
         self,
-        alarm_sound: str = "sounds/alarm.wav",
-        alert_sound: str = "sounds/alert.wav",
         volume: int = 90,
+        use_tts: bool = True,
     ):
         """Initialize audio alerting.
 
         Args:
-            alarm_sound: Path to loud alarm sound file
-            alert_sound: Path to warning sound file
             volume: Default volume (0-100)
+            use_tts: Whether to use text-to-speech
         """
-        self.alarm_sound = alarm_sound
-        self.alert_sound = alert_sound
         self._volume = volume / 100.0
+        self._use_tts = use_tts and ESPEAK_AVAILABLE
         self._initialized = False
         self._alarm_playing = False
         self._alarm_task: Optional[asyncio.Task] = None
+        self._current_severity: str = "warning"
+        self._current_message: str = ""
+        self._generated_sounds: Dict[str, pygame.mixer.Sound] = {}
 
     async def initialize(self) -> bool:
-        """Initialize pygame mixer.
+        """Initialize pygame mixer and generate alarm tones.
 
         Returns:
             True if initialization successful
@@ -81,14 +117,56 @@ class AudioAlert:
             return False
 
         try:
-            pygame.mixer.init()
-            pygame.mixer.music.set_volume(self._volume)
+            pygame.mixer.init(frequency=44100, size=-16, channels=1, buffer=512)
             self._initialized = True
+
+            # Pre-generate alarm tones for each severity
+            for severity, config in self.TONE_CONFIGS.items():
+                self._generated_sounds[severity] = self._generate_tone(
+                    config['frequency'],
+                    config['duration_ms']
+                )
+
             logger.info("Audio alerting initialized")
+            if self._use_tts:
+                logger.info("TTS enabled (espeak)")
             return True
         except Exception as e:
             logger.error(f"Failed to initialize pygame mixer: {e}")
             return False
+
+    def _generate_tone(self, frequency: int, duration_ms: int) -> 'pygame.mixer.Sound':
+        """Generate a tone programmatically using pure Python.
+
+        Args:
+            frequency: Tone frequency in Hz
+            duration_ms: Duration in milliseconds
+
+        Returns:
+            pygame Sound object
+        """
+        sample_rate = 44100
+        n_samples = int(sample_rate * duration_ms / 1000)
+        fade_samples = min(int(sample_rate * 0.01), n_samples // 4)  # 10ms fade
+
+        # Generate sine wave with envelope
+        samples = array.array('h')  # signed short (16-bit)
+        for i in range(n_samples):
+            t = i / sample_rate
+            # Sine wave
+            value = math.sin(2 * math.pi * frequency * t)
+
+            # Apply envelope (fade in/out)
+            if i < fade_samples:
+                value *= i / fade_samples
+            elif i >= n_samples - fade_samples:
+                value *= (n_samples - i) / fade_samples
+
+            # Scale to 16-bit and apply volume
+            samples.append(int(value * 32767 * self._volume))
+
+        # Create sound from bytes
+        return pygame.mixer.Sound(buffer=samples.tobytes())
 
     def close(self) -> None:
         """Stop audio and cleanup pygame."""
@@ -96,6 +174,7 @@ class AudioAlert:
         if self._initialized:
             pygame.mixer.quit()
             self._initialized = False
+            self._generated_sounds.clear()
 
     def set_volume(self, level: int) -> None:
         """Set volume level.
@@ -104,61 +183,108 @@ class AudioAlert:
             level: Volume from 0-100
         """
         self._volume = max(0, min(100, level)) / 100.0
+        # Regenerate tones with new volume
         if self._initialized:
-            pygame.mixer.music.set_volume(self._volume)
+            for severity, config in self.TONE_CONFIGS.items():
+                self._generated_sounds[severity] = self._generate_tone(
+                    config['frequency'],
+                    config['duration_ms']
+                )
 
-    def play_sound(self, sound_path: str, loops: int = 0) -> bool:
-        """Play a sound file.
+    def speak(self, message: str, blocking: bool = False) -> None:
+        """Speak a message using TTS.
 
         Args:
-            sound_path: Path to sound file
-            loops: Number of times to repeat (-1 for infinite)
-
-        Returns:
-            True if playback started
+            message: Text to speak
+            blocking: Whether to wait for speech to complete
         """
-        if not self._initialized:
-            return False
-
-        if not os.path.exists(sound_path):
-            logger.error(f"Sound file not found: {sound_path}")
-            return False
+        if not self._use_tts:
+            return
 
         try:
-            pygame.mixer.music.load(sound_path)
-            pygame.mixer.music.play(loops=loops)
-            return True
+            cmd = ["espeak", "-s", "150", "-a", str(int(self._volume * 200)), message]
+            if blocking:
+                subprocess.run(cmd, capture_output=True, timeout=30)
+            else:
+                subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            logger.debug(f"TTS: {message}")
         except Exception as e:
-            logger.error(f"Error playing sound: {e}")
-            return False
+            logger.error(f"TTS error: {e}")
 
-    async def play_alarm(self, repeat_interval: float = 30.0) -> None:
-        """Play loud alarm sound repeatedly.
+    async def play_alarm_pattern(self, severity: str = "critical") -> None:
+        """Play alarm pattern for given severity.
 
         Args:
-            repeat_interval: Seconds between repeats
+            severity: One of critical, high, warning, info
+        """
+        if not self._initialized:
+            return
+
+        config = self.TONE_CONFIGS.get(severity, self.TONE_CONFIGS['warning'])
+        sound = self._generated_sounds.get(severity)
+
+        if not sound:
+            return
+
+        # Play the pattern
+        for beep in config['pattern']:
+            if not self._alarm_playing:
+                break
+            if beep:
+                sound.play()
+                await asyncio.sleep(config['duration_ms'] / 1000)
+            else:
+                await asyncio.sleep(config['pause_ms'] / 1000)
+
+    async def play_alarm(self, severity: str = "critical", message: str = "", repeat_interval: float = 30.0) -> None:
+        """Play alarm with TTS message repeatedly.
+
+        Args:
+            severity: Alert severity level
+            message: Message to speak
+            repeat_interval: Seconds between full repeats (pattern + TTS)
         """
         self._alarm_playing = True
-        while self._alarm_playing:
-            if not self.play_sound(self.alarm_sound):
-                # If sound file missing, wait and try again
-                await asyncio.sleep(repeat_interval)
-                continue
+        first_play = True
 
-            # Wait for sound to finish or interval
+        while self._alarm_playing:
+            # Play alarm tones
+            await self.play_alarm_pattern(severity)
+
+            if not self._alarm_playing:
+                break
+
+            # Speak message (always on first play, then periodically)
+            if message and (first_play or repeat_interval >= 30):
+                await asyncio.sleep(0.5)  # Brief pause before speaking
+                self.speak(message, blocking=True)
+                first_play = False
+
+            if not self._alarm_playing:
+                break
+
+            # Wait before repeating
             await asyncio.sleep(repeat_interval)
 
-    def start_alarm(self, repeat_interval: float = 30.0) -> None:
+    def start_alarm(self, severity: str = "critical", message: str = "", repeat_interval: float = 30.0) -> None:
         """Start alarm in background task.
 
         Args:
+            severity: Alert severity level
+            message: Message to speak via TTS
             repeat_interval: Seconds between repeats
         """
         if self._alarm_task and not self._alarm_task.done():
-            return  # Already playing
+            # Already playing - update severity/message if different
+            if severity != self._current_severity or message != self._current_message:
+                self.stop_alarm()
+            else:
+                return
 
-        self._alarm_task = asyncio.create_task(self.play_alarm(repeat_interval))
-        logger.info("Started alarm playback")
+        self._current_severity = severity
+        self._current_message = message
+        self._alarm_task = asyncio.create_task(self.play_alarm(severity, message, repeat_interval))
+        logger.info(f"Started {severity} alarm: {message}")
 
     def stop_alarm(self) -> None:
         """Stop alarm playback."""
@@ -168,17 +294,26 @@ class AudioAlert:
             self._alarm_task = None
 
         if self._initialized:
-            pygame.mixer.music.stop()
+            pygame.mixer.stop()
 
         logger.info("Stopped alarm playback")
 
-    def play_alert(self) -> bool:
-        """Play single warning sound.
+    def play_alert(self, severity: str = "info", message: str = "") -> None:
+        """Play single alert tone with optional TTS.
 
-        Returns:
-            True if playback started
+        Args:
+            severity: Alert severity
+            message: Optional message to speak
         """
-        return self.play_sound(self.alert_sound, loops=0)
+        if not self._initialized:
+            return
+
+        sound = self._generated_sounds.get(severity, self._generated_sounds.get('info'))
+        if sound:
+            sound.play()
+
+        if message:
+            self.speak(message)
 
     @property
     def is_playing(self) -> bool:
@@ -488,9 +623,8 @@ class AlertManager:
         # Audio alerting
         if self.config.alerting.local_audio.enabled:
             self._audio = AudioAlert(
-                alarm_sound=self.config.alerting.local_audio.alarm_sound,
-                alert_sound="sounds/alert.wav",  # Use default
                 volume=self.config.alerting.local_audio.volume,
+                use_tts=self.config.alerting.local_audio.use_tts,
             )
             await self._audio.initialize()
 
@@ -541,7 +675,10 @@ class AlertManager:
         # Local audio (unless silenced)
         if not self.is_silenced and self._audio:
             repeat_interval = self.config.alerting.local_audio.repeat_interval_seconds
-            self._audio.start_alarm(repeat_interval)
+            severity = alert.severity.value  # critical, high, warning, info
+            # Create spoken message
+            tts_message = self._create_tts_message(alert)
+            self._audio.start_alarm(severity=severity, message=tts_message, repeat_interval=repeat_interval)
 
         # PagerDuty
         if self._pagerduty:
@@ -562,15 +699,40 @@ class AlertManager:
                 self._pagerduty_keys[alert.id] = pd_key
 
     async def trigger_local_only(self, alert: Alert) -> None:
-        """Trigger local audio alert only.
+        """Trigger local audio alert only (single tone, no repeat).
 
         Args:
             alert: Alert object with details
         """
         if not self.is_silenced and self._audio:
-            self._audio.play_alert()
+            severity = alert.severity.value
+            tts_message = self._create_tts_message(alert)
+            self._audio.play_alert(severity=severity, message=tts_message)
 
         logger.info(f"Local alert: {alert.message}")
+
+    def _create_tts_message(self, alert: Alert) -> str:
+        """Create a spoken message for an alert.
+
+        Args:
+            alert: Alert object
+
+        Returns:
+            Message suitable for TTS
+        """
+        messages = {
+            AlertType.SPO2_CRITICAL: f"Warning! Oxygen level critical at {alert.spo2} percent.",
+            AlertType.SPO2_WARNING: f"Attention. Oxygen level low at {alert.spo2} percent.",
+            AlertType.HR_HIGH: f"Attention. Heart rate high at {alert.heart_rate} beats per minute.",
+            AlertType.HR_LOW: f"Attention. Heart rate low at {alert.heart_rate} beats per minute.",
+            AlertType.DISCONNECT: "Attention. Oxygen monitor disconnected.",
+            AlertType.NO_THERAPY_AT_NIGHT: "Attention. Therapy not in use during sleep hours.",
+            AlertType.BATTERY_WARNING: f"Attention. Monitor battery low at {alert.spo2 if alert.spo2 else 'unknown'} percent.",
+            AlertType.BATTERY_CRITICAL: f"Warning! Monitor battery critical.",
+            AlertType.SYSTEM_ERROR: "Warning! System error detected.",
+            AlertType.TEST: "This is a test alert.",
+        }
+        return messages.get(alert.alert_type, alert.message)
 
     async def resolve_alert(self, alert_id: str) -> bool:
         """Resolve an active alert.
@@ -688,12 +850,8 @@ class AlertManager:
     @staticmethod
     def _severity_to_pd(severity: AlertSeverity) -> str:
         """Convert AlertSeverity to PagerDuty severity string."""
-        mapping = {
-            AlertSeverity.CRITICAL: "critical",
-            AlertSeverity.WARNING: "warning",
-            AlertSeverity.INFO: "info",
-        }
-        return mapping.get(severity, "warning")
+        # Use the pagerduty_severity property from the enum
+        return severity.pagerduty_severity
 
 
 # Command-line interface for testing
@@ -719,22 +877,35 @@ if __name__ == "__main__":
         print("Audio Alert Test")
         print("=" * 50)
 
-        audio = AudioAlert()
+        audio = AudioAlert(volume=80, use_tts=True)
         if not await audio.initialize():
             print("Failed to initialize audio")
             return
 
-        print("Playing test sound...")
-        # Try to play alert sound
-        if os.path.exists("sounds/alert.wav"):
-            audio.play_alert()
-            await asyncio.sleep(2)
-        else:
-            print("Note: sounds/alert.wav not found")
-            print("Create alarm sounds for full testing")
+        print("\nTesting INFO tone...")
+        audio.play_alert(severity="info", message="This is an info alert")
+        await asyncio.sleep(3)
+
+        print("\nTesting WARNING tone...")
+        audio.play_alert(severity="warning", message="This is a warning alert")
+        await asyncio.sleep(3)
+
+        print("\nTesting HIGH tone...")
+        audio.play_alert(severity="high", message="This is a high priority alert")
+        await asyncio.sleep(3)
+
+        print("\nTesting CRITICAL alarm pattern (5 seconds)...")
+        audio._alarm_playing = True
+        await audio.play_alarm_pattern("critical")
+        audio._alarm_playing = False
+        await asyncio.sleep(1)
+
+        print("\nTesting TTS with critical alarm...")
+        audio.speak("Warning! Oxygen level critical at 85 percent.", blocking=True)
+        await asyncio.sleep(1)
 
         audio.close()
-        print("Audio test complete")
+        print("\nAudio test complete")
 
     async def test_with_config():
         from src.config import load_config

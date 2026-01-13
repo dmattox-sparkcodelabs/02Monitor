@@ -7,43 +7,240 @@
     <h1>Settings</h1>
 
     <div class="settings-sections">
-        <!-- SpO2 Thresholds -->
+        <!-- Alert Configuration Table -->
         <section class="settings-section">
-            <h2>SpO2 Thresholds</h2>
-            <div class="form-group">
-                <label for="spo2-alarm">Alarm Level (%)</label>
-                <input type="number" id="spo2-alarm" min="70" max="95"
-                       value="{{ config.thresholds.spo2.alarm_level if config else 90 }}">
-                <span class="help-text">Trigger alarm when SpO2 drops below this level</span>
+            <h2>Alert Configuration</h2>
+            <p class="section-description">Configure alert thresholds, severity levels, and therapy bypass behavior</p>
+
+            <div class="alert-table-container">
+                <table class="alert-table" id="alert-table">
+                    <thead>
+                        <tr>
+                            <th>Alert</th>
+                            <th>Enabled</th>
+                            <th>Threshold</th>
+                            <th>Duration</th>
+                            <th>Severity</th>
+                            <th title="Skip this alert when AVAPS therapy is active">Bypass on Therapy</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr data-alert="spo2_critical_off_therapy">
+                            <td>
+                                <strong>SpO2 Critical (Off Therapy)</strong>
+                                <span class="alert-desc">Oxygen low when not on AVAPS</span>
+                            </td>
+                            <td><input type="checkbox" class="alert-enabled" checked></td>
+                            <td><span class="input-with-unit"><input type="number" class="alert-threshold" min="70" max="95" value="90"><span class="unit">%</span></span></td>
+                            <td><span class="input-with-unit"><input type="number" class="alert-duration" min="10" max="300" value="30"><span class="unit">s</span></span></td>
+                            <td>
+                                <select class="alert-severity">
+                                    <option value="critical" selected>Critical</option>
+                                    <option value="high">High</option>
+                                    <option value="warning">Warning</option>
+                                    <option value="info">Info</option>
+                                </select>
+                            </td>
+                            <td><span class="na">-</span></td>
+                        </tr>
+                        <tr data-alert="spo2_critical_on_therapy">
+                            <td>
+                                <strong>SpO2 Critical (On Therapy)</strong>
+                                <span class="alert-desc">Oxygen low during AVAPS use</span>
+                            </td>
+                            <td><input type="checkbox" class="alert-enabled" checked></td>
+                            <td><span class="input-with-unit"><input type="number" class="alert-threshold" min="70" max="95" value="85"><span class="unit">%</span></span></td>
+                            <td><span class="input-with-unit"><input type="number" class="alert-duration" min="10" max="600" value="120"><span class="unit">s</span></span></td>
+                            <td>
+                                <select class="alert-severity">
+                                    <option value="critical" selected>Critical</option>
+                                    <option value="high">High</option>
+                                    <option value="warning">Warning</option>
+                                    <option value="info">Info</option>
+                                </select>
+                            </td>
+                            <td><span class="na">-</span></td>
+                        </tr>
+                        <tr data-alert="spo2_warning">
+                            <td>
+                                <strong>SpO2 Warning</strong>
+                                <span class="alert-desc">Early warning before critical</span>
+                            </td>
+                            <td><input type="checkbox" class="alert-enabled" checked></td>
+                            <td><span class="input-with-unit"><input type="number" class="alert-threshold" min="75" max="98" value="92"><span class="unit">%</span></span></td>
+                            <td><span class="input-with-unit"><input type="number" class="alert-duration" min="10" max="300" value="60"><span class="unit">s</span></span></td>
+                            <td>
+                                <select class="alert-severity">
+                                    <option value="critical">Critical</option>
+                                    <option value="high">High</option>
+                                    <option value="warning" selected>Warning</option>
+                                    <option value="info">Info</option>
+                                </select>
+                            </td>
+                            <td><input type="checkbox" class="alert-bypass-therapy" checked></td>
+                        </tr>
+                        <tr data-alert="hr_high">
+                            <td>
+                                <strong>HR High</strong>
+                                <span class="alert-desc">Heart rate too high</span>
+                            </td>
+                            <td><input type="checkbox" class="alert-enabled" checked></td>
+                            <td><span class="input-with-unit"><input type="number" class="alert-threshold" min="80" max="200" value="120"><span class="unit">bpm</span></span></td>
+                            <td><span class="input-with-unit"><input type="number" class="alert-duration" min="10" max="300" value="60"><span class="unit">s</span></span></td>
+                            <td>
+                                <select class="alert-severity">
+                                    <option value="critical">Critical</option>
+                                    <option value="high" selected>High</option>
+                                    <option value="warning">Warning</option>
+                                    <option value="info">Info</option>
+                                </select>
+                            </td>
+                            <td><input type="checkbox" class="alert-bypass-therapy" checked></td>
+                        </tr>
+                        <tr data-alert="hr_low">
+                            <td>
+                                <strong>HR Low</strong>
+                                <span class="alert-desc">Heart rate too low</span>
+                            </td>
+                            <td><input type="checkbox" class="alert-enabled" checked></td>
+                            <td><span class="input-with-unit"><input type="number" class="alert-threshold" min="30" max="70" value="50"><span class="unit">bpm</span></span></td>
+                            <td><span class="input-with-unit"><input type="number" class="alert-duration" min="10" max="300" value="60"><span class="unit">s</span></span></td>
+                            <td>
+                                <select class="alert-severity">
+                                    <option value="critical">Critical</option>
+                                    <option value="high" selected>High</option>
+                                    <option value="warning">Warning</option>
+                                    <option value="info">Info</option>
+                                </select>
+                            </td>
+                            <td><input type="checkbox" class="alert-bypass-therapy" checked></td>
+                        </tr>
+                        <tr data-alert="disconnect">
+                            <td>
+                                <strong>Disconnect</strong>
+                                <span class="alert-desc">Oximeter connection lost</span>
+                            </td>
+                            <td><input type="checkbox" class="alert-enabled" checked></td>
+                            <td><span class="input-with-unit"><input type="number" class="alert-threshold" min="1" max="480" value="120"><span class="unit">m</span></span></td>
+                            <td><span class="na">-</span></td>
+                            <td>
+                                <select class="alert-severity">
+                                    <option value="critical">Critical</option>
+                                    <option value="high">High</option>
+                                    <option value="warning" selected>Warning</option>
+                                    <option value="info">Info</option>
+                                </select>
+                            </td>
+                            <td><input type="checkbox" class="alert-bypass-therapy" checked></td>
+                        </tr>
+                        <tr data-alert="no_therapy_at_night_info">
+                            <td>
+                                <strong>No Therapy at Night (Info)</strong>
+                                <span class="alert-desc">Initial notice during sleep hours</span>
+                            </td>
+                            <td><input type="checkbox" class="alert-enabled" checked></td>
+                            <td><span class="input-with-unit"><input type="number" class="alert-threshold" min="1" max="180" value="30"><span class="unit">m</span></span></td>
+                            <td><span class="na">-</span></td>
+                            <td>
+                                <select class="alert-severity">
+                                    <option value="critical">Critical</option>
+                                    <option value="high">High</option>
+                                    <option value="warning">Warning</option>
+                                    <option value="info" selected>Info</option>
+                                </select>
+                            </td>
+                            <td><span class="na">-</span></td>
+                        </tr>
+                        <tr data-alert="no_therapy_at_night_high">
+                            <td>
+                                <strong>No Therapy at Night (Urgent)</strong>
+                                <span class="alert-desc">Escalated alert during sleep hours</span>
+                            </td>
+                            <td><input type="checkbox" class="alert-enabled" checked></td>
+                            <td><span class="input-with-unit"><input type="number" class="alert-threshold" min="1" max="240" value="60"><span class="unit">m</span></span></td>
+                            <td><span class="na">-</span></td>
+                            <td>
+                                <select class="alert-severity">
+                                    <option value="critical">Critical</option>
+                                    <option value="high" selected>High</option>
+                                    <option value="warning">Warning</option>
+                                    <option value="info">Info</option>
+                                </select>
+                            </td>
+                            <td><span class="na">-</span></td>
+                        </tr>
+                        <tr data-alert="battery_warning">
+                            <td>
+                                <strong>Battery Warning</strong>
+                                <span class="alert-desc">Oximeter battery low</span>
+                            </td>
+                            <td><input type="checkbox" class="alert-enabled" checked></td>
+                            <td><span class="input-with-unit"><input type="number" class="alert-threshold" min="5" max="50" value="25"><span class="unit">%</span></span></td>
+                            <td><span class="na">-</span></td>
+                            <td>
+                                <select class="alert-severity">
+                                    <option value="critical">Critical</option>
+                                    <option value="high">High</option>
+                                    <option value="warning" selected>Warning</option>
+                                    <option value="info">Info</option>
+                                </select>
+                            </td>
+                            <td><input type="checkbox" class="alert-bypass-therapy"></td>
+                        </tr>
+                        <tr data-alert="battery_critical">
+                            <td>
+                                <strong>Battery Critical</strong>
+                                <span class="alert-desc">Oximeter battery very low</span>
+                            </td>
+                            <td><input type="checkbox" class="alert-enabled" checked></td>
+                            <td><span class="input-with-unit"><input type="number" class="alert-threshold" min="5" max="30" value="10"><span class="unit">%</span></span></td>
+                            <td><span class="na">-</span></td>
+                            <td>
+                                <select class="alert-severity">
+                                    <option value="critical" selected>Critical</option>
+                                    <option value="high">High</option>
+                                    <option value="warning">Warning</option>
+                                    <option value="info">Info</option>
+                                </select>
+                            </td>
+                            <td><input type="checkbox" class="alert-bypass-therapy"></td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
-            <div class="form-group">
-                <label for="spo2-duration">Alarm Duration (seconds)</label>
-                <input type="number" id="spo2-duration" min="10" max="120"
-                       value="{{ config.thresholds.spo2.alarm_duration_seconds if config else 30 }}">
-                <span class="help-text">How long SpO2 must be below threshold before alarm</span>
-            </div>
-            <div class="form-group">
-                <label for="spo2-warning">Warning Level (%)</label>
-                <input type="number" id="spo2-warning" min="75" max="98"
-                       value="{{ config.thresholds.spo2.warning_level if config else 92 }}">
-                <span class="help-text">Log warning when SpO2 drops below this level</span>
+        </section>
+
+        <!-- Sleep Hours Configuration -->
+        <section class="settings-section">
+            <h2>Sleep Hours</h2>
+            <p class="section-description">Define when "No Therapy at Night" alert is active</p>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="sleep-start">Start Time</label>
+                    <input type="time" id="sleep-start" value="22:00">
+                </div>
+                <div class="form-group">
+                    <label for="sleep-end">End Time</label>
+                    <input type="time" id="sleep-end" value="07:00">
+                </div>
             </div>
         </section>
 
         <!-- AVAPS Thresholds -->
         <section class="settings-section">
-            <h2>AVAPS Power Thresholds</h2>
-            <div class="form-group">
-                <label for="avaps-on">ON Threshold (Watts)</label>
-                <input type="number" id="avaps-on" min="1" max="50" step="0.5"
-                       value="{{ config.thresholds.avaps.on_watts if config else 3.0 }}">
-                <span class="help-text">Power level above which AVAPS is considered ON</span>
-            </div>
-            <div class="form-group">
-                <label for="avaps-off">OFF Threshold (Watts)</label>
-                <input type="number" id="avaps-off" min="0" max="10" step="0.5"
-                       value="{{ config.thresholds.avaps.off_watts if config else 2.0 }}">
-                <span class="help-text">Power level below which AVAPS is considered OFF</span>
+            <h2>AVAPS Power Detection</h2>
+            <p class="section-description">Power thresholds to detect when AVAPS therapy is active</p>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="avaps-on">ON Threshold (Watts)</label>
+                    <input type="number" id="avaps-on" min="1" max="50" step="0.5" value="5.0">
+                    <span class="help-text">Power above this = therapy ON</span>
+                </div>
+                <div class="form-group">
+                    <label for="avaps-off">OFF Threshold (Watts)</label>
+                    <input type="number" id="avaps-off" min="0" max="10" step="0.5" value="4.0">
+                    <span class="help-text">Power below this = therapy OFF</span>
+                </div>
             </div>
         </section>
 
@@ -51,9 +248,8 @@
         <section class="settings-section">
             <h2>Local Audio Alerts</h2>
             <div class="form-group">
-                <label for="audio-volume">Volume (%)</label>
-                <input type="range" id="audio-volume" min="0" max="100"
-                       value="{{ config.alerting.local_audio.volume if config else 90 }}">
+                <label for="audio-volume">Volume</label>
+                <input type="range" id="audio-volume" min="0" max="100" value="90">
                 <span class="volume-display" id="volume-display">90%</span>
             </div>
         </section>
@@ -62,15 +258,9 @@
         <section class="settings-section">
             <h2>PagerDuty Integration</h2>
             <div class="form-group">
-                <label for="pagerduty-key">Events API v2 Routing Key</label>
-                <input type="text" id="pagerduty-key" placeholder="Enter routing key"
-                       value="{{ config.alerting.pagerduty.routing_key if config and config.alerting.pagerduty.routing_key else '' }}">
-                <span class="help-text">Get this from PagerDuty > Service > Integrations > Events API v2</span>
-            </div>
-            <div class="form-group">
-                <a href="https://support.pagerduty.com/docs/services-and-integrations" target="_blank" class="help-link">
-                    How to set up PagerDuty
-                </a>
+                <label for="pagerduty-key">Routing Key</label>
+                <input type="text" id="pagerduty-key" placeholder="Events API v2 routing key">
+                <span class="help-text">Get from PagerDuty > Service > Integrations</span>
             </div>
         </section>
 
@@ -79,23 +269,8 @@
             <h2>Healthchecks.io Integration</h2>
             <div class="form-group">
                 <label for="healthchecks-url">Ping URL</label>
-                <input type="url" id="healthchecks-url" placeholder="https://hc-ping.com/your-uuid"
-                       value="{{ config.alerting.healthchecks.ping_url if config and config.alerting.healthchecks.ping_url else '' }}">
-                <span class="help-text">Get this from Healthchecks.io > Check > Ping URL</span>
-            </div>
-            <div class="form-group">
-                <a href="https://healthchecks.io/docs/" target="_blank" class="help-link">
-                    How to set up Healthchecks.io
-                </a>
-            </div>
-        </section>
-
-        <!-- Test Alerts -->
-        <section class="settings-section">
-            <h2>Test Alerts</h2>
-            <div class="form-group">
-                <button class="btn btn-warning" id="test-alert-btn">Test Alert</button>
-                <span class="help-text">Trigger a test alert to verify your alert configuration</span>
+                <input type="url" id="healthchecks-url" placeholder="https://hc-ping.com/your-uuid">
+                <span class="help-text">Dead-man switch to detect if monitoring fails</span>
             </div>
         </section>
 
@@ -104,14 +279,18 @@
             <h2>Device Configuration</h2>
             <div class="form-group">
                 <label for="plug-ip">Smart Plug IP Address</label>
-                <input type="text" id="plug-ip"
-                       value="{{ config.devices.smart_plug.ip_address if config else '' }}"
-                       placeholder="192.168.1.100">
-                <span class="help-text">IP address of Kasa KP115 smart plug</span>
+                <input type="text" id="plug-ip" placeholder="192.168.1.100">
                 <button class="btn btn-sm" id="discover-plugs">Discover Devices</button>
             </div>
-            <div id="discovered-devices" class="discovered-devices" style="display: none;">
-                <!-- Populated by JavaScript -->
+            <div id="discovered-devices" class="discovered-devices" style="display: none;"></div>
+        </section>
+
+        <!-- Test Alerts -->
+        <section class="settings-section">
+            <h2>Test Alerts</h2>
+            <div class="form-group">
+                <button class="btn btn-warning" id="test-alert-btn">Test Alert</button>
+                <span class="help-text">Trigger a test alert to verify configuration</span>
             </div>
         </section>
 
@@ -121,14 +300,13 @@
             <span class="save-status" id="save-status"></span>
         </div>
 
-        <!-- Note about persistence -->
         <div class="settings-note">
-            Settings are saved to config.yaml and will persist across restarts.
+            Settings are saved to config.yaml and persist across restarts.
         </div>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/settings.js') }}"></script>
+<script src="{{ url_for('static', filename='js/settings.js') }}?v=2"></script>
 {% endblock %}

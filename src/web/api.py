@@ -344,19 +344,37 @@ def get_config():
     if not config:
         return jsonify({'error': 'Config not available'}), 503
 
+    # Helper to serialize alert item
+    def _alert_to_dict(alert):
+        return {
+            'enabled': alert.enabled,
+            'threshold': alert.threshold,
+            'duration_seconds': alert.duration_seconds,
+            'severity': alert.severity,
+            'bypass_on_therapy': alert.bypass_on_therapy,
+        }
+
     return jsonify({
-        'thresholds': {
-            'spo2': {
-                'alarm_level': config.thresholds.spo2.alarm_level,
-                'alarm_duration_seconds': config.thresholds.spo2.alarm_duration_seconds,
-                'warning_level': config.thresholds.spo2.warning_level,
+        'alerts': {
+            'spo2_critical_off_therapy': _alert_to_dict(config.alerts.spo2_critical_off_therapy),
+            'spo2_critical_on_therapy': _alert_to_dict(config.alerts.spo2_critical_on_therapy),
+            'spo2_warning': _alert_to_dict(config.alerts.spo2_warning),
+            'hr_high': _alert_to_dict(config.alerts.hr_high),
+            'hr_low': _alert_to_dict(config.alerts.hr_low),
+            'disconnect': _alert_to_dict(config.alerts.disconnect),
+            'no_therapy_at_night_info': _alert_to_dict(config.alerts.no_therapy_at_night_info),
+            'no_therapy_at_night_high': _alert_to_dict(config.alerts.no_therapy_at_night_high),
+            'battery_warning': _alert_to_dict(config.alerts.battery_warning),
+            'battery_critical': _alert_to_dict(config.alerts.battery_critical),
+            'sleep_hours': {
+                'start': config.alerts.sleep_hours.start,
+                'end': config.alerts.sleep_hours.end,
             },
+        },
+        'thresholds': {
             'avaps': {
                 'on_watts': config.thresholds.avaps.on_watts,
                 'off_watts': config.thresholds.avaps.off_watts,
-            },
-            'ble': {
-                'reconnect_alert_minutes': config.thresholds.ble.reconnect_alert_minutes,
             },
         },
         'alerting': {
@@ -399,20 +417,52 @@ def update_config():
 
     updated = []
 
+    # Update alerts configuration (unified format)
+    if 'alerts' in data:
+        alerts = data['alerts']
+
+        # Helper to update alert item from dict
+        def _update_alert(alert_config, alert_data, alert_name):
+            fields_updated = []
+            if 'enabled' in alert_data:
+                alert_config.enabled = bool(alert_data['enabled'])
+                fields_updated.append(f'{alert_name}.enabled')
+            if 'threshold' in alert_data:
+                alert_config.threshold = int(alert_data['threshold'])
+                fields_updated.append(f'{alert_name}.threshold')
+            if 'duration_seconds' in alert_data:
+                alert_config.duration_seconds = int(alert_data['duration_seconds'])
+                fields_updated.append(f'{alert_name}.duration_seconds')
+            if 'severity' in alert_data:
+                alert_config.severity = alert_data['severity']
+                fields_updated.append(f'{alert_name}.severity')
+            if 'bypass_on_therapy' in alert_data:
+                alert_config.bypass_on_therapy = bool(alert_data['bypass_on_therapy'])
+                fields_updated.append(f'{alert_name}.bypass_on_therapy')
+            return fields_updated
+
+        # Update each alert type
+        alert_types = ['spo2_critical_off_therapy', 'spo2_critical_on_therapy', 'spo2_warning',
+                       'hr_high', 'hr_low', 'disconnect',
+                       'no_therapy_at_night_info', 'no_therapy_at_night_high',
+                       'battery_warning', 'battery_critical']
+        for alert_name in alert_types:
+            if alert_name in alerts:
+                alert_config = getattr(config.alerts, alert_name)
+                updated.extend(_update_alert(alert_config, alerts[alert_name], alert_name))
+
+        # Update sleep hours
+        if 'sleep_hours' in alerts:
+            if 'start' in alerts['sleep_hours']:
+                config.alerts.sleep_hours.start = alerts['sleep_hours']['start']
+                updated.append('alerts.sleep_hours.start')
+            if 'end' in alerts['sleep_hours']:
+                config.alerts.sleep_hours.end = alerts['sleep_hours']['end']
+                updated.append('alerts.sleep_hours.end')
+
     # Update thresholds
     if 'thresholds' in data:
         t = data['thresholds']
-        if 'spo2' in t:
-            if 'alarm_level' in t['spo2']:
-                config.thresholds.spo2.alarm_level = int(t['spo2']['alarm_level'])
-                updated.append('spo2.alarm_level')
-            if 'alarm_duration_seconds' in t['spo2']:
-                config.thresholds.spo2.alarm_duration_seconds = int(t['spo2']['alarm_duration_seconds'])
-                updated.append('spo2.alarm_duration_seconds')
-            if 'warning_level' in t['spo2']:
-                config.thresholds.spo2.warning_level = int(t['spo2']['warning_level'])
-                updated.append('spo2.warning_level')
-
         if 'avaps' in t:
             if 'on_watts' in t['avaps']:
                 config.thresholds.avaps.on_watts = float(t['avaps']['on_watts'])

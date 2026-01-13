@@ -43,6 +43,10 @@ from src.web.app import create_app
 
 logger = logging.getLogger(__name__)
 
+# Required acknowledgment file and contents
+ACKNOWLEDGMENT_FILE = "ACKNOWLEDGED_NOT_FOR_MEDICAL_USE.txt"
+REQUIRED_ACKNOWLEDGMENT = "I understand this is not a medical device"
+
 
 def setup_logging(config, debug: bool = False) -> None:
     """Configure logging based on config settings.
@@ -332,8 +336,50 @@ class O2MonitorApp:
             self.ble_reader.stop()
 
 
+def check_acknowledgment() -> bool:
+    """Check that user has acknowledged this is not a medical device.
+
+    Returns:
+        True if acknowledgment file exists with correct contents
+    """
+    if not os.path.exists(ACKNOWLEDGMENT_FILE):
+        print("=" * 70)
+        print("IMPORTANT: ACKNOWLEDGMENT REQUIRED")
+        print("=" * 70)
+        print()
+        print("This software is NOT a medical device and must NOT be used for")
+        print("medical monitoring, diagnosis, or treatment decisions.")
+        print()
+        print("Before running this software, you must create an acknowledgment file.")
+        print()
+        print("To acknowledge and proceed, create the file by running:")
+        print()
+        print(f'    echo "{REQUIRED_ACKNOWLEDGMENT}" > {ACKNOWLEDGMENT_FILE}')
+        print()
+        print("=" * 70)
+        return False
+
+    # Check file contents
+    try:
+        with open(ACKNOWLEDGMENT_FILE, 'r') as f:
+            contents = f.read().strip()
+        if REQUIRED_ACKNOWLEDGMENT not in contents:
+            print(f"Error: {ACKNOWLEDGMENT_FILE} does not contain required acknowledgment.")
+            print(f'File must contain: "{REQUIRED_ACKNOWLEDGMENT}"')
+            return False
+    except Exception as e:
+        print(f"Error reading {ACKNOWLEDGMENT_FILE}: {e}")
+        return False
+
+    return True
+
+
 def main():
     """Main entry point."""
+    # Check for acknowledgment before doing anything
+    if not check_acknowledgment():
+        sys.exit(1)
+
     parser = argparse.ArgumentParser(
         description="O2 Monitoring System",
         formatter_class=argparse.RawDescriptionHelpFormatter,
