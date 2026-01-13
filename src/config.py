@@ -569,6 +569,7 @@ def save_config(config: Config, config_path: str = "config.yaml") -> None:
             'duration_seconds': alert_cfg.duration_seconds,
             'severity': alert_cfg.severity,
             'bypass_on_therapy': alert_cfg.bypass_on_therapy,
+            'resend_interval_seconds': alert_cfg.resend_interval_seconds,
         }
 
     existing['alerts'] = {

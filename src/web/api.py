@@ -367,6 +367,7 @@ def get_config():
             'duration_seconds': alert.duration_seconds,
             'severity': alert.severity,
             'bypass_on_therapy': alert.bypass_on_therapy,
+            'resend_interval_seconds': alert.resend_interval_seconds,
         }
 
     return jsonify({
@@ -399,10 +400,12 @@ def get_config():
             },
             'pagerduty': {
                 'configured': bool(config.alerting.pagerduty.routing_key),
+                'routing_key': config.alerting.pagerduty.routing_key or '',
                 'service_name': config.alerting.pagerduty.service_name,
             },
             'healthchecks': {
                 'configured': bool(config.alerting.healthchecks.ping_url),
+                'ping_url': config.alerting.healthchecks.ping_url or '',
             },
         },
         'devices': {
@@ -454,6 +457,9 @@ def update_config():
             if 'bypass_on_therapy' in alert_data:
                 alert_config.bypass_on_therapy = bool(alert_data['bypass_on_therapy'])
                 fields_updated.append(f'{alert_name}.bypass_on_therapy')
+            if 'resend_interval_seconds' in alert_data:
+                alert_config.resend_interval_seconds = int(alert_data['resend_interval_seconds'])
+                fields_updated.append(f'{alert_name}.resend_interval_seconds')
             return fields_updated
 
         # Update each alert type

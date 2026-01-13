@@ -103,6 +103,16 @@
             updateVolumeDisplay();
         }
 
+        // PagerDuty settings
+        if (config.alerting && config.alerting.pagerduty) {
+            setValue('pagerdutyKey', config.alerting.pagerduty.routing_key);
+        }
+
+        // Healthchecks settings
+        if (config.alerting && config.alerting.healthchecks) {
+            setValue('healthchecksUrl', config.alerting.healthchecks.ping_url);
+        }
+
         // Device settings
         if (config.devices && config.devices.smart_plug) {
             setValue('plugIp', config.devices.smart_plug.ip_address);
@@ -119,6 +129,7 @@
         const durationInput = row.querySelector('.alert-duration');
         const severitySelect = row.querySelector('.alert-severity');
         const bypassCheckbox = row.querySelector('.alert-bypass-therapy');
+        const resendInput = row.querySelector('.alert-resend');
 
         if (enabledCheckbox && data.enabled !== undefined) {
             enabledCheckbox.checked = data.enabled;
@@ -127,13 +138,18 @@
             thresholdInput.value = data.threshold;
         }
         if (durationInput && data.duration_seconds !== undefined) {
-            durationInput.value = data.duration_seconds;
+            // Convert seconds to minutes for display
+            durationInput.value = (data.duration_seconds / 60).toFixed(1).replace(/\.0$/, '');
         }
         if (severitySelect && data.severity) {
             severitySelect.value = data.severity;
         }
         if (bypassCheckbox && data.bypass_on_therapy !== undefined) {
             bypassCheckbox.checked = data.bypass_on_therapy;
+        }
+        if (resendInput && data.resend_interval_seconds !== undefined) {
+            // Convert seconds to minutes for display
+            resendInput.value = (data.resend_interval_seconds / 60).toFixed(1).replace(/\.0$/, '');
         }
     }
 
@@ -354,6 +370,7 @@
         const durationInput = row.querySelector('.alert-duration');
         const severitySelect = row.querySelector('.alert-severity');
         const bypassCheckbox = row.querySelector('.alert-bypass-therapy');
+        const resendInput = row.querySelector('.alert-resend');
 
         const data = {
             enabled: enabledCheckbox ? enabledCheckbox.checked : true,
@@ -367,8 +384,15 @@
         }
 
         // Only include duration if input exists (not N/A)
+        // Convert minutes to seconds for storage
         if (durationInput) {
-            data.duration_seconds = parseInt(durationInput.value);
+            data.duration_seconds = Math.round(parseFloat(durationInput.value) * 60);
+        }
+
+        // Only include resend interval if input exists
+        // Convert minutes to seconds for storage
+        if (resendInput) {
+            data.resend_interval_seconds = Math.round(parseFloat(resendInput.value) * 60);
         }
 
         return data;
