@@ -128,12 +128,14 @@ class AlertItemConfig:
         duration_seconds: How long condition must persist before alerting
         severity: Alert severity level (critical, high, warning, info)
         bypass_on_therapy: Skip this alert when AVAPS therapy is active
+        resend_interval_seconds: Cooldown before re-sending the same alert (default 5 min)
     """
     enabled: bool = True
     threshold: int = 0
     duration_seconds: int = 30
     severity: str = "warning"
     bypass_on_therapy: bool = False
+    resend_interval_seconds: int = 300  # Default 5 minutes
 
 
 @dataclass

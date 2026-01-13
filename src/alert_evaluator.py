@@ -155,15 +155,17 @@ class AlertEvaluator:
             cfg = self.config.spo2_critical_off_therapy
             tracker_key = "spo2_critical_off"
 
-        if cfg.enabled:
-            if spo2 < cfg.threshold:
-                self.tracker.start(tracker_key)
-                duration = self.tracker.duration_seconds(tracker_key)
+        therapy_str = "on therapy" if therapy_on else "off therapy"
 
-                if duration >= cfg.duration_seconds:
-                    severity = self._get_severity(cfg)
-                    if not self.tracker.was_fired_recently(tracker_key, severity.value):
-                        therapy_str = "on therapy" if therapy_on else "off therapy"
+        if spo2 < cfg.threshold:
+            self.tracker.start(tracker_key)
+            duration = self.tracker.duration_seconds(tracker_key)
+
+            if duration >= cfg.duration_seconds:
+                severity = self._get_severity(cfg)
+                cooldown = cfg.resend_interval_seconds
+                if not self.tracker.was_fired_recently(tracker_key, severity.value, cooldown):
+                    if cfg.enabled:
                         alert = Alert(
                             alert_type=AlertType.SPO2_CRITICAL,
                             severity=severity,
@@ -174,30 +176,38 @@ class AlertEvaluator:
                         alerts.append(alert)
                         self.tracker.mark_fired(tracker_key, severity.value)
                         logger.critical(f"SpO2 CRITICAL: {spo2}% for {duration:.0f}s ({therapy_str})")
-            else:
-                self.tracker.reset(tracker_key)
-                self.tracker.clear_fired(tracker_key)
+                    else:
+                        logger.info(f"SpO2 CRITICAL would fire (DISABLED): {spo2}% for {duration:.0f}s ({therapy_str})")
+                        self.tracker.mark_fired(tracker_key, severity.value)
+        else:
+            self.tracker.reset(tracker_key)
+            self.tracker.clear_fired(tracker_key)
 
         # Evaluate warning SpO2 (only if not already critical)
         cfg = self.config.spo2_warning
-        if cfg.enabled and not alerts and not self._should_bypass(cfg, therapy_on):
+        if not alerts and not self._should_bypass(cfg, therapy_on):
             if spo2 < cfg.threshold:
                 self.tracker.start("spo2_warning")
                 duration = self.tracker.duration_seconds("spo2_warning")
 
                 if duration >= cfg.duration_seconds:
                     severity = self._get_severity(cfg)
-                    if not self.tracker.was_fired_recently("spo2_warning", severity.value):
-                        alert = Alert(
-                            alert_type=AlertType.SPO2_WARNING,
-                            severity=severity,
-                            message=f"SpO2 warning at {spo2}% for {int(duration)}s",
-                            spo2=spo2,
-                            heart_rate=reading.heart_rate,
-                        )
-                        alerts.append(alert)
-                        self.tracker.mark_fired("spo2_warning", severity.value)
-                        logger.warning(f"SpO2 WARNING: {spo2}% for {duration:.0f}s")
+                    cooldown = cfg.resend_interval_seconds
+                    if not self.tracker.was_fired_recently("spo2_warning", severity.value, cooldown):
+                        if cfg.enabled:
+                            alert = Alert(
+                                alert_type=AlertType.SPO2_WARNING,
+                                severity=severity,
+                                message=f"SpO2 warning at {spo2}% for {int(duration)}s",
+                                spo2=spo2,
+                                heart_rate=reading.heart_rate,
+                            )
+                            alerts.append(alert)
+                            self.tracker.mark_fired("spo2_warning", severity.value)
+                            logger.warning(f"SpO2 WARNING: {spo2}% for {duration:.0f}s")
+                        else:
+                            logger.info(f"SpO2 WARNING would fire (DISABLED): {spo2}% for {duration:.0f}s")
+                            self.tracker.mark_fired("spo2_warning", severity.value)
             else:
                 self.tracker.reset("spo2_warning")
                 self.tracker.clear_fired("spo2_warning")
@@ -211,48 +221,58 @@ class AlertEvaluator:
 
         # Evaluate HR high
         cfg = self.config.hr_high
-        if cfg.enabled and not self._should_bypass(cfg, therapy_on):
+        if not self._should_bypass(cfg, therapy_on):
             if hr > cfg.threshold:
                 self.tracker.start("hr_high")
                 duration = self.tracker.duration_seconds("hr_high")
 
                 if duration >= cfg.duration_seconds:
                     severity = self._get_severity(cfg)
-                    if not self.tracker.was_fired_recently("hr_high", severity.value):
-                        alert = Alert(
-                            alert_type=AlertType.HR_HIGH,
-                            severity=severity,
-                            message=f"Heart rate high at {hr} BPM for {int(duration)}s",
-                            spo2=reading.spo2,
-                            heart_rate=hr,
-                        )
-                        alerts.append(alert)
-                        self.tracker.mark_fired("hr_high", severity.value)
-                        logger.warning(f"HR HIGH: {hr} BPM for {duration:.0f}s")
+                    cooldown = cfg.resend_interval_seconds
+                    if not self.tracker.was_fired_recently("hr_high", severity.value, cooldown):
+                        if cfg.enabled:
+                            alert = Alert(
+                                alert_type=AlertType.HR_HIGH,
+                                severity=severity,
+                                message=f"Heart rate high at {hr} BPM for {int(duration)}s",
+                                spo2=reading.spo2,
+                                heart_rate=hr,
+                            )
+                            alerts.append(alert)
+                            self.tracker.mark_fired("hr_high", severity.value)
+                            logger.warning(f"HR HIGH: {hr} BPM for {duration:.0f}s")
+                        else:
+                            logger.info(f"HR HIGH would fire (DISABLED): {hr} BPM for {duration:.0f}s")
+                            self.tracker.mark_fired("hr_high", severity.value)
             else:
                 self.tracker.reset("hr_high")
                 self.tracker.clear_fired("hr_high")
 
         # Evaluate HR low
         cfg = self.config.hr_low
-        if cfg.enabled and not self._should_bypass(cfg, therapy_on):
+        if not self._should_bypass(cfg, therapy_on):
             if hr < cfg.threshold:
                 self.tracker.start("hr_low")
                 duration = self.tracker.duration_seconds("hr_low")
 
                 if duration >= cfg.duration_seconds:
                     severity = self._get_severity(cfg)
-                    if not self.tracker.was_fired_recently("hr_low", severity.value):
-                        alert = Alert(
-                            alert_type=AlertType.HR_LOW,
-                            severity=severity,
-                            message=f"Heart rate low at {hr} BPM for {int(duration)}s",
-                            spo2=reading.spo2,
-                            heart_rate=hr,
-                        )
-                        alerts.append(alert)
-                        self.tracker.mark_fired("hr_low", severity.value)
-                        logger.warning(f"HR LOW: {hr} BPM for {duration:.0f}s")
+                    cooldown = cfg.resend_interval_seconds
+                    if not self.tracker.was_fired_recently("hr_low", severity.value, cooldown):
+                        if cfg.enabled:
+                            alert = Alert(
+                                alert_type=AlertType.HR_LOW,
+                                severity=severity,
+                                message=f"Heart rate low at {hr} BPM for {int(duration)}s",
+                                spo2=reading.spo2,
+                                heart_rate=hr,
+                            )
+                            alerts.append(alert)
+                            self.tracker.mark_fired("hr_low", severity.value)
+                            logger.warning(f"HR LOW: {hr} BPM for {duration:.0f}s")
+                        else:
+                            logger.info(f"HR LOW would fire (DISABLED): {hr} BPM for {duration:.0f}s")
+                            self.tracker.mark_fired("hr_low", severity.value)
             else:
                 self.tracker.reset("hr_low")
                 self.tracker.clear_fired("hr_low")
@@ -263,9 +283,6 @@ class AlertEvaluator:
         """Evaluate disconnect condition."""
         alerts = []
         cfg = self.config.disconnect
-
-        if not cfg.enabled:
-            return alerts
 
         # Check bypass on therapy
         if self._should_bypass(cfg, therapy_on):
@@ -280,15 +297,20 @@ class AlertEvaluator:
             # Threshold is in minutes for disconnect
             if duration_minutes >= cfg.threshold:
                 severity = self._get_severity(cfg)
-                if not self.tracker.was_fired_recently("disconnect", severity.value):
-                    alert = Alert(
-                        alert_type=AlertType.DISCONNECT,
-                        severity=severity,
-                        message=f"Oximeter disconnected for {int(duration_minutes)} minutes",
-                    )
-                    alerts.append(alert)
-                    self.tracker.mark_fired("disconnect", severity.value)
-                    logger.warning(f"DISCONNECT: {duration_minutes:.0f} minutes")
+                cooldown = cfg.resend_interval_seconds
+                if not self.tracker.was_fired_recently("disconnect", severity.value, cooldown):
+                    if cfg.enabled:
+                        alert = Alert(
+                            alert_type=AlertType.DISCONNECT,
+                            severity=severity,
+                            message=f"Oximeter disconnected for {int(duration_minutes)} minutes",
+                        )
+                        alerts.append(alert)
+                        self.tracker.mark_fired("disconnect", severity.value)
+                        logger.warning(f"DISCONNECT: {duration_minutes:.0f} minutes")
+                    else:
+                        logger.info(f"DISCONNECT would fire (DISABLED): {duration_minutes:.0f} minutes")
+                        self.tracker.mark_fired("disconnect", severity.value)
         else:
             # Connected - reset disconnect tracking
             if "disconnect" in self.tracker.condition_starts:
@@ -319,31 +341,41 @@ class AlertEvaluator:
 
             # Check high-level alert first (longer threshold)
             cfg_high = self.config.no_therapy_at_night_high
-            if cfg_high.enabled and duration_minutes >= cfg_high.threshold:
+            if duration_minutes >= cfg_high.threshold:
                 severity = self._get_severity(cfg_high)
-                if not self.tracker.was_fired_recently("no_therapy_high", severity.value, cooldown_seconds=1800):
-                    alert = Alert(
-                        alert_type=AlertType.NO_THERAPY_AT_NIGHT,
-                        severity=severity,
-                        message=f"URGENT: AVAPS therapy not in use for {int(duration_minutes)} minutes during sleep hours",
-                    )
-                    alerts.append(alert)
-                    self.tracker.mark_fired("no_therapy_high", severity.value)
-                    logger.warning(f"NO THERAPY (HIGH): {duration_minutes:.0f} minutes")
+                cooldown = cfg_high.resend_interval_seconds
+                if not self.tracker.was_fired_recently("no_therapy_high", severity.value, cooldown):
+                    if cfg_high.enabled:
+                        alert = Alert(
+                            alert_type=AlertType.NO_THERAPY_AT_NIGHT,
+                            severity=severity,
+                            message=f"URGENT: AVAPS therapy not in use for {int(duration_minutes)} minutes during sleep hours",
+                        )
+                        alerts.append(alert)
+                        self.tracker.mark_fired("no_therapy_high", severity.value)
+                        logger.warning(f"NO THERAPY (HIGH): {duration_minutes:.0f} minutes")
+                    else:
+                        logger.info(f"NO THERAPY (HIGH) would fire (DISABLED): {duration_minutes:.0f} minutes")
+                        self.tracker.mark_fired("no_therapy_high", severity.value)
 
             # Check info-level alert (shorter threshold) - only if high didn't fire
             cfg_info = self.config.no_therapy_at_night_info
-            if not alerts and cfg_info.enabled and duration_minutes >= cfg_info.threshold:
+            if not alerts and duration_minutes >= cfg_info.threshold:
                 severity = self._get_severity(cfg_info)
-                if not self.tracker.was_fired_recently("no_therapy_info", severity.value, cooldown_seconds=1800):
-                    alert = Alert(
-                        alert_type=AlertType.NO_THERAPY_AT_NIGHT,
-                        severity=severity,
-                        message=f"AVAPS therapy not in use for {int(duration_minutes)} minutes during sleep hours",
-                    )
-                    alerts.append(alert)
-                    self.tracker.mark_fired("no_therapy_info", severity.value)
-                    logger.info(f"NO THERAPY (INFO): {duration_minutes:.0f} minutes")
+                cooldown = cfg_info.resend_interval_seconds
+                if not self.tracker.was_fired_recently("no_therapy_info", severity.value, cooldown):
+                    if cfg_info.enabled:
+                        alert = Alert(
+                            alert_type=AlertType.NO_THERAPY_AT_NIGHT,
+                            severity=severity,
+                            message=f"AVAPS therapy not in use for {int(duration_minutes)} minutes during sleep hours",
+                        )
+                        alerts.append(alert)
+                        self.tracker.mark_fired("no_therapy_info", severity.value)
+                        logger.info(f"NO THERAPY (INFO): {duration_minutes:.0f} minutes")
+                    else:
+                        logger.info(f"NO THERAPY (INFO) would fire (DISABLED): {duration_minutes:.0f} minutes")
+                        self.tracker.mark_fired("no_therapy_info", severity.value)
         else:
             # Therapy is on - reset tracking
             self.tracker.reset("no_therapy")
@@ -364,38 +396,48 @@ class AlertEvaluator:
 
         # Check critical battery
         cfg = self.config.battery_critical
-        if cfg.enabled and not self._should_bypass(cfg, therapy_on):
+        if not self._should_bypass(cfg, therapy_on):
             if battery <= cfg.threshold:
                 severity = self._get_severity(cfg)
-                if not self.tracker.was_fired_recently("battery_critical", severity.value, cooldown_seconds=3600):
-                    alert = Alert(
-                        alert_type=AlertType.BATTERY_CRITICAL,
-                        severity=severity,
-                        message=f"Oximeter battery critically low at {battery}%",
-                        spo2=reading.spo2,
-                        heart_rate=reading.heart_rate,
-                    )
-                    alerts.append(alert)
-                    self.tracker.mark_fired("battery_critical", severity.value)
-                    logger.error(f"BATTERY CRITICAL: {battery}%")
+                cooldown = cfg.resend_interval_seconds
+                if not self.tracker.was_fired_recently("battery_critical", severity.value, cooldown):
+                    if cfg.enabled:
+                        alert = Alert(
+                            alert_type=AlertType.BATTERY_CRITICAL,
+                            severity=severity,
+                            message=f"Oximeter battery critically low at {battery}%",
+                            spo2=reading.spo2,
+                            heart_rate=reading.heart_rate,
+                        )
+                        alerts.append(alert)
+                        self.tracker.mark_fired("battery_critical", severity.value)
+                        logger.error(f"BATTERY CRITICAL: {battery}%")
+                    else:
+                        logger.info(f"BATTERY CRITICAL would fire (DISABLED): {battery}%")
+                        self.tracker.mark_fired("battery_critical", severity.value)
                 return alerts  # Don't also fire warning
 
         # Check warning battery
         cfg = self.config.battery_warning
-        if cfg.enabled and not self._should_bypass(cfg, therapy_on):
+        if not self._should_bypass(cfg, therapy_on):
             if battery <= cfg.threshold:
                 severity = self._get_severity(cfg)
-                if not self.tracker.was_fired_recently("battery_warning", severity.value, cooldown_seconds=3600):
-                    alert = Alert(
-                        alert_type=AlertType.BATTERY_WARNING,
-                        severity=severity,
-                        message=f"Oximeter battery low at {battery}%",
-                        spo2=reading.spo2,
-                        heart_rate=reading.heart_rate,
-                    )
-                    alerts.append(alert)
-                    self.tracker.mark_fired("battery_warning", severity.value)
-                    logger.warning(f"BATTERY WARNING: {battery}%")
+                cooldown = cfg.resend_interval_seconds
+                if not self.tracker.was_fired_recently("battery_warning", severity.value, cooldown):
+                    if cfg.enabled:
+                        alert = Alert(
+                            alert_type=AlertType.BATTERY_WARNING,
+                            severity=severity,
+                            message=f"Oximeter battery low at {battery}%",
+                            spo2=reading.spo2,
+                            heart_rate=reading.heart_rate,
+                        )
+                        alerts.append(alert)
+                        self.tracker.mark_fired("battery_warning", severity.value)
+                        logger.warning(f"BATTERY WARNING: {battery}%")
+                    else:
+                        logger.info(f"BATTERY WARNING would fire (DISABLED): {battery}%")
+                        self.tracker.mark_fired("battery_warning", severity.value)
 
         return alerts
 

@@ -27,7 +27,7 @@ thresholds:
     max_reconnect_attempts: null
 
 # Alert Configuration (therapy-aware, unified format)
-# Each alert: enabled, threshold, duration_seconds, severity, bypass_on_therapy
+# Each alert has: enabled, threshold, duration_seconds, severity, bypass_on_therapy, resend_interval_seconds
 alerts:
   spo2_critical_off_therapy:
     enabled: true
@@ -35,58 +35,68 @@ alerts:
     duration_seconds: 30
     severity: critical
     bypass_on_therapy: false
+    resend_interval_seconds: 60      # Re-alert every 1 minute
   spo2_critical_on_therapy:
     enabled: true
     threshold: 85              # SpO2 % below this triggers alert (during AVAPS use)
     duration_seconds: 120      # More time allowed during therapy
     severity: critical
     bypass_on_therapy: false
+    resend_interval_seconds: 60      # Re-alert every 1 minute
   spo2_warning:
     enabled: true
     threshold: 92
     duration_seconds: 60
     severity: warning
     bypass_on_therapy: true    # Skip during AVAPS therapy
+    resend_interval_seconds: 300     # Re-alert every 5 minutes
   hr_high:
     enabled: true
     threshold: 120             # BPM above this triggers alert
     duration_seconds: 60
     severity: high
     bypass_on_therapy: true
+    resend_interval_seconds: 300     # Re-alert every 5 minutes
   hr_low:
     enabled: true
     threshold: 50              # BPM below this triggers alert
     duration_seconds: 60
     severity: high
     bypass_on_therapy: true
+    resend_interval_seconds: 300     # Re-alert every 5 minutes
   disconnect:
     enabled: true
-    threshold: 120             # Seconds disconnected before alert
+    threshold: 120             # Minutes disconnected before alert
     duration_seconds: 0
     severity: warning
     bypass_on_therapy: true
+    resend_interval_seconds: 1800    # Re-alert every 30 minutes
   no_therapy_at_night_info:
     enabled: true
     threshold: 30              # Minutes into sleep hours before info alert
     duration_seconds: 0
     severity: info
     bypass_on_therapy: false
+    resend_interval_seconds: 1800    # Re-alert every 30 minutes
   no_therapy_at_night_high:
     enabled: true
     threshold: 60              # Minutes into sleep hours before high alert
     duration_seconds: 0
     severity: high
     bypass_on_therapy: false
+    resend_interval_seconds: 1800    # Re-alert every 30 minutes
   battery_warning:
     enabled: true
     threshold: 25              # Battery % below this triggers alert
     duration_seconds: 0
     severity: warning
     bypass_on_therapy: false
+    resend_interval_seconds: 3600    # Re-alert every 1 hour
   battery_critical:
     enabled: true
     threshold: 10
     duration_seconds: 0
+    resend_interval_seconds: 3600    # Re-alert every 1 hour
     severity: critical
     bypass_on_therapy: false
   sleep_hours:
