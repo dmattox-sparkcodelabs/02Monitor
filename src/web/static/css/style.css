@@ -134,6 +134,26 @@ body {
     color: white;
 }
 
+.btn-success {
+    background: var(--success-color) !important;
+    color: white;
+}
+
+.btn-error {
+    background: var(--danger-color) !important;
+    color: white;
+}
+
+.btn-test {
+    background: #607D8B;
+    color: white;
+    min-width: 50px;
+}
+
+.btn-test:hover {
+    background: #455A64;
+}
+
 .btn-block {
     display: block;
     width: 100%;

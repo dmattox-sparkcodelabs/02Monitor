@@ -265,16 +265,67 @@ def get_active_alerts():
 @api_bp.route('/alerts/test', methods=['POST'])
 @api_login_required
 def trigger_test_alert():
-    """Trigger a test alert."""
+    """Trigger a test alert for a specific alert type."""
     if not g.alert_manager:
         return jsonify({'error': 'Alert manager not available'}), 503
+
+    data = request.get_json() or {}
+    alert_type_str = data.get('alert_type', 'test')
+
+    # Map alert type string to AlertType enum and get configured severity
+    alert_type_map = {
+        'spo2_critical_off_therapy': (AlertType.SPO2_CRITICAL, 'spo2_critical_off_therapy'),
+        'spo2_critical_on_therapy': (AlertType.SPO2_CRITICAL, 'spo2_critical_on_therapy'),
+        'spo2_warning': (AlertType.SPO2_WARNING, 'spo2_warning'),
+        'hr_high': (AlertType.HR_HIGH, 'hr_high'),
+        'hr_low': (AlertType.HR_LOW, 'hr_low'),
+        'disconnect': (AlertType.DISCONNECT, 'disconnect'),
+        'no_therapy_at_night_info': (AlertType.NO_THERAPY_AT_NIGHT, 'no_therapy_at_night_info'),
+        'no_therapy_at_night_high': (AlertType.NO_THERAPY_AT_NIGHT, 'no_therapy_at_night_high'),
+        'battery_warning': (AlertType.BATTERY_WARNING, 'battery_warning'),
+        'battery_critical': (AlertType.BATTERY_CRITICAL, 'battery_critical'),
+        'adapter_disconnect': (AlertType.ADAPTER_DISCONNECT, 'adapter_disconnect'),
+        'test': (AlertType.TEST, None),
+    }
+
+    if alert_type_str not in alert_type_map:
+        return jsonify({'error': f'Unknown alert type: {alert_type_str}'}), 400
+
+    alert_type, config_key = alert_type_map[alert_type_str]
+
+    # Get severity from config if available
+    severity = AlertSeverity.INFO
+    if config_key and g.config and hasattr(g.config, 'alerts'):
+        alert_config = getattr(g.config.alerts, config_key, None)
+        if alert_config and hasattr(alert_config, 'severity'):
+            severity_str = alert_config.severity.upper()
+            try:
+                severity = AlertSeverity[severity_str]
+            except KeyError:
+                severity = AlertSeverity.INFO
+
+    # Build descriptive message
+    alert_messages = {
+        'spo2_critical_off_therapy': 'TEST: SpO2 Critical (Off Therapy) - Oxygen level dangerously low',
+        'spo2_critical_on_therapy': 'TEST: SpO2 Critical (On Therapy) - Oxygen level dangerously low during AVAPS',
+        'spo2_warning': 'TEST: SpO2 Warning - Oxygen level entering warning zone',
+        'hr_high': 'TEST: Heart Rate High - Heart rate above threshold',
+        'hr_low': 'TEST: Heart Rate Low - Heart rate below threshold',
+        'disconnect': 'TEST: Disconnect - Oximeter connection lost',
+        'no_therapy_at_night_info': 'TEST: No Therapy at Night (Info) - AVAPS not in use during sleep hours',
+        'no_therapy_at_night_high': 'TEST: No Therapy at Night (Urgent) - AVAPS still not in use during sleep hours',
+        'battery_warning': 'TEST: Battery Warning - Oximeter battery low',
+        'battery_critical': 'TEST: Battery Critical - Oximeter battery very low',
+        'adapter_disconnect': 'TEST: Adapter Disconnect - Bluetooth adapter unplugged',
+        'test': 'Test alert triggered from web dashboard',
+    }
 
     alert = Alert(
         id=f"test-{uuid.uuid4().hex[:8]}",
         timestamp=datetime.now(),
-        alert_type=AlertType.TEST,
-        severity=AlertSeverity.INFO,
-        message="Test alert triggered from web dashboard",
+        alert_type=alert_type,
+        severity=severity,
+        message=alert_messages.get(alert_type_str, 'Test alert'),
     )
 
     # Trigger full alert (including PagerDuty)
@@ -284,12 +335,14 @@ def trigger_test_alert():
     if g.database:
         run_async(g.database.insert_alert(alert))
 
-    logger.info(f"Test alert triggered by {session.get('user')}")
+    logger.info(f"Test alert ({alert_type_str}, {severity.value}) triggered by {session.get('user')}")
 
     return jsonify({
         'success': True,
         'alert_id': alert.id,
-        'message': 'Test alert triggered',
+        'alert_type': alert_type_str,
+        'severity': severity.value,
+        'message': f'Test {alert_type_str} alert triggered ({severity.value})',
     })
 
 

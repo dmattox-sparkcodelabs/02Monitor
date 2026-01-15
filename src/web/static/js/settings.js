@@ -49,9 +49,6 @@
         switchTimeout: document.getElementById('switch-timeout'),
         bounceInterval: document.getElementById('bounce-interval'),
 
-        // Test alert
-        testAlertBtn: document.getElementById('test-alert-btn'),
-
         // Save
         saveBtn: document.getElementById('save-settings'),
         saveStatus: document.getElementById('save-status')
@@ -200,33 +197,54 @@
             elements.saveBtn.addEventListener('click', saveSettings);
         }
 
-        // Test alert button
-        if (elements.testAlertBtn) {
-            elements.testAlertBtn.addEventListener('click', testAlert);
-        }
+        // Test alert buttons (per row)
+        document.querySelectorAll('.btn-test').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const alertType = this.getAttribute('data-alert-type');
+                testSpecificAlert(alertType, this);
+            });
+        });
     }
 
-    // Trigger test alert
-    async function testAlert() {
-        elements.testAlertBtn.disabled = true;
-        elements.testAlertBtn.textContent = 'Testing...';
+    // Trigger test alert for a specific alert type
+    async function testSpecificAlert(alertType, button) {
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = '...';
 
         try {
             const response = await apiFetch('/api/alerts/test', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ alert_type: alertType })
             });
 
-            if (!response.ok) throw new Error('Failed to trigger test alert');
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to trigger test alert');
+            }
 
             const data = await response.json();
-            alert(data.message || 'Test alert triggered');
+
+            // Brief success indication
+            button.textContent = '✓';
+            button.classList.add('btn-success');
+            setTimeout(() => {
+                button.textContent = originalText;
+                button.classList.remove('btn-success');
+            }, 1500);
+
         } catch (error) {
             console.error('Error triggering test alert:', error);
-            alert('Failed to trigger test alert');
+            button.textContent = '✗';
+            button.classList.add('btn-error');
+            setTimeout(() => {
+                button.textContent = originalText;
+                button.classList.remove('btn-error');
+            }, 1500);
+            alert('Failed to trigger test alert: ' + error.message);
         } finally {
-            elements.testAlertBtn.disabled = false;
-            elements.testAlertBtn.textContent = 'Test Alert';
+            button.disabled = false;
         }
     }
 
