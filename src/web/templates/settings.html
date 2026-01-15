@@ -320,6 +320,16 @@
                     <span class="help-text">When switching, try each adapter this often</span>
                 </div>
             </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="respawn-delay">Respawn Delay</label>
+                    <span class="input-with-unit">
+                        <input type="number" id="respawn-delay" min="5" max="60" step="5" value="15">
+                        <span class="unit">sec</span>
+                    </span>
+                    <span class="help-text">Wait time before retrying when device not found</span>
+                </div>
+            </div>
         </section>
 
         <!-- AVAPS Thresholds -->
@@ -395,5 +405,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/settings.js') }}?v=9"></script>
+<script src="{{ url_for('static', filename='js/settings.js') }}?v=10"></script>
 {% endblock %}

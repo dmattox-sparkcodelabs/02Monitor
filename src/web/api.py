@@ -481,6 +481,7 @@ def get_config():
             'late_reading_seconds': config.bluetooth.late_reading_seconds,
             'switch_timeout_minutes': config.bluetooth.switch_timeout_minutes,
             'bounce_interval_minutes': config.bluetooth.bounce_interval_minutes,
+            'respawn_delay_seconds': config.bluetooth.respawn_delay_seconds,
         },
     })
 
@@ -603,6 +604,9 @@ def update_config():
         if 'bounce_interval_minutes' in bt:
             config.bluetooth.bounce_interval_minutes = int(bt['bounce_interval_minutes'])
             updated.append('bluetooth.bounce_interval_minutes')
+        if 'respawn_delay_seconds' in bt:
+            config.bluetooth.respawn_delay_seconds = int(bt['respawn_delay_seconds'])
+            updated.append('bluetooth.respawn_delay_seconds')
 
     # Persist to config.yaml
     from src.config import save_config

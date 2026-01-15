@@ -443,6 +443,7 @@ class CheckmeO2Reader:
         adapters_config: Optional[List[Dict[str, str]]] = None,
         switch_timeout_minutes: int = 5,
         bounce_interval_minutes: int = 1,
+        respawn_delay_seconds: int = 15,
     ):
         self.mac_address = mac_address
         self.callback = callback
@@ -450,6 +451,7 @@ class CheckmeO2Reader:
         self.read_interval = read_interval
         self.switch_timeout_seconds = switch_timeout_minutes * 60
         self.bounce_interval_seconds = bounce_interval_minutes * 60
+        self.respawn_delay_seconds = respawn_delay_seconds
 
         # Process management
         self._process: Optional[mp.Process] = None
@@ -652,7 +654,8 @@ class CheckmeO2Reader:
             while self._running:
                 # Check if process died
                 if self._process and not self._process.is_alive():
-                    logger.warning("BLE worker process died, restarting...")
+                    logger.warning(f"BLE worker process died, waiting {self.respawn_delay_seconds}s before restarting...")
+                    time.sleep(self.respawn_delay_seconds)
                     self._start_worker()
 
                 try:
@@ -770,6 +773,7 @@ def get_reader(config, callback=None, error_callback=None):
         read_interval = config.bluetooth.read_interval_seconds if hasattr(config, 'bluetooth') else config.devices.oximeter.read_interval_seconds
         switch_timeout = config.bluetooth.switch_timeout_minutes if hasattr(config, 'bluetooth') else 5
         bounce_interval = config.bluetooth.bounce_interval_minutes if hasattr(config, 'bluetooth') else 1
+        respawn_delay = config.bluetooth.respawn_delay_seconds if hasattr(config, 'bluetooth') else 15
 
         logger.info(f"Using CheckmeO2Reader (multiprocessing mode, {len(adapters_config) if adapters_config else 0} adapters)")
         return CheckmeO2Reader(
@@ -780,4 +784,5 @@ def get_reader(config, callback=None, error_callback=None):
             adapters_config=adapters_config,
             switch_timeout_minutes=switch_timeout,
             bounce_interval_minutes=bounce_interval,
+            respawn_delay_seconds=respawn_delay,
         )
