@@ -566,6 +566,22 @@ body {
 .chart-controls {
     display: flex;
     gap: 0.5rem;
+    align-items: center;
+}
+
+.chart-controls-divider {
+    color: var(--text-muted);
+    margin: 0 0.25rem;
+}
+
+#hr-toggle-btn {
+    background: var(--bg-light);
+    color: var(--text-muted);
+}
+
+#hr-toggle-btn.active {
+    background: #f44336;
+    color: white;
 }
 
 /* Action Buttons */

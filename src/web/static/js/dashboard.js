@@ -18,6 +18,7 @@
     let updateInterval = null;
     let chartRange = 6; // hours
     let therapyPeriods = []; // Store therapy periods for chart shading
+    let showHeartRate = false; // Toggle for HR line on chart
 
     // DOM Elements
     const elements = {
@@ -85,6 +86,12 @@
     const SPO2_ALARM_LEVEL = 90;
     const SPO2_WARNING_LEVEL = 92;
 
+    // Heart rate threshold levels
+    const HR_LOW_ALARM = 50;
+    const HR_LOW_WARNING = 60;
+    const HR_HIGH_WARNING = 100;
+    const HR_HIGH_ALARM = 120;
+
     // Plugin to draw threshold background zones
     const thresholdZonesPlugin = {
         id: 'thresholdZones',
@@ -121,6 +128,50 @@
                 chartArea.right - chartArea.left,
                 alarmY - warningY
             );
+
+            ctx.restore();
+        }
+    };
+
+    // Plugin to draw HR threshold zones (only when HR is visible)
+    const hrZonesPlugin = {
+        id: 'hrZones',
+        beforeDraw: function(chart) {
+            if (!showHeartRate) return;
+
+            const ctx = chart.ctx;
+            const chartArea = chart.chartArea;
+            const yScale = chart.scales.y1;
+
+            if (!chartArea || !yScale) return;
+
+            const yMin = yScale.min;
+            const yMax = yScale.max;
+            const lowAlarmY = yScale.getPixelForValue(HR_LOW_ALARM);
+            const lowWarningY = yScale.getPixelForValue(HR_LOW_WARNING);
+            const highWarningY = yScale.getPixelForValue(HR_HIGH_WARNING);
+            const highAlarmY = yScale.getPixelForValue(HR_HIGH_ALARM);
+            const bottomY = yScale.getPixelForValue(yMin);
+            const topY = yScale.getPixelForValue(yMax);
+
+            ctx.save();
+
+            // Draw subtle dashed lines for HR thresholds on right side
+            ctx.setLineDash([5, 5]);
+            ctx.lineWidth = 1;
+
+            // Low alarm line (50 bpm)
+            ctx.strokeStyle = 'rgba(244, 67, 54, 0.5)';
+            ctx.beginPath();
+            ctx.moveTo(chartArea.left, lowAlarmY);
+            ctx.lineTo(chartArea.right, lowAlarmY);
+            ctx.stroke();
+
+            // High alarm line (120 bpm)
+            ctx.beginPath();
+            ctx.moveTo(chartArea.left, highAlarmY);
+            ctx.lineTo(chartArea.right, highAlarmY);
+            ctx.stroke();
 
             ctx.restore();
         }
@@ -179,7 +230,19 @@
                     fill: true,
                     tension: 0.2,
                     pointRadius: 0,
-                    pointHitRadius: 10
+                    pointHitRadius: 10,
+                    yAxisID: 'y'
+                }, {
+                    label: 'Heart Rate',
+                    data: [],
+                    borderColor: '#f44336',
+                    backgroundColor: 'rgba(244, 67, 54, 0.1)',
+                    fill: false,
+                    tension: 0.2,
+                    pointRadius: 0,
+                    pointHitRadius: 10,
+                    yAxisID: 'y1',
+                    hidden: !showHeartRate
                 }]
             },
             options: {
@@ -200,17 +263,33 @@
                         }
                     },
                     y: {
+                        type: 'linear',
+                        position: 'left',
                         min: 80,
                         max: 100,
                         title: {
                             display: true,
                             text: 'SpO2 %'
                         }
+                    },
+                    y1: {
+                        type: 'linear',
+                        position: 'right',
+                        min: 40,
+                        max: 140,
+                        display: showHeartRate,
+                        title: {
+                            display: true,
+                            text: 'Heart Rate (BPM)'
+                        },
+                        grid: {
+                            drawOnChartArea: false
+                        }
                     }
                 },
                 plugins: {
                     legend: {
-                        display: false
+                        display: showHeartRate
                     }
                 },
                 interaction: {
@@ -218,7 +297,7 @@
                     mode: 'index'
                 }
             },
-            plugins: [therapyZonesPlugin, thresholdZonesPlugin]
+            plugins: [therapyZonesPlugin, thresholdZonesPlugin, hrZonesPlugin]
         });
     }
 
@@ -275,19 +354,57 @@
         }
 
         // Chart range buttons
-        document.querySelectorAll('.chart-controls .btn').forEach(btn => {
+        document.querySelectorAll('.chart-controls .btn[data-range]').forEach(btn => {
             btn.addEventListener('click', function() {
-                document.querySelectorAll('.chart-controls .btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.chart-controls .btn[data-range]').forEach(b => b.classList.remove('active'));
                 this.classList.add('active');
                 chartRange = parseInt(this.dataset.range);
-                // Update chart title
-                const chartTitle = document.getElementById('chart-title');
-                if (chartTitle) {
-                    chartTitle.textContent = 'SpO2 Trend (Last ' + chartRange + ' Hour' + (chartRange > 1 ? 's' : '') + ')';
-                }
+                updateChartTitle();
                 loadChartData();
             });
         });
+
+        // Heart rate toggle button
+        const hrToggleBtn = document.getElementById('hr-toggle-btn');
+        if (hrToggleBtn) {
+            hrToggleBtn.addEventListener('click', toggleHeartRate);
+        }
+    }
+
+    // Update chart title based on current settings
+    function updateChartTitle() {
+        const chartTitle = document.getElementById('chart-title');
+        if (chartTitle) {
+            const hrText = showHeartRate ? ' + HR' : '';
+            chartTitle.textContent = 'SpO2' + hrText + ' Trend (Last ' + chartRange + ' Hour' + (chartRange > 1 ? 's' : '') + ')';
+        }
+    }
+
+    // Toggle heart rate display on chart
+    function toggleHeartRate() {
+        showHeartRate = !showHeartRate;
+
+        // Update button appearance
+        const hrToggleBtn = document.getElementById('hr-toggle-btn');
+        if (hrToggleBtn) {
+            hrToggleBtn.classList.toggle('active', showHeartRate);
+        }
+
+        // Update chart
+        if (spo2Chart) {
+            // Toggle HR dataset visibility
+            spo2Chart.data.datasets[1].hidden = !showHeartRate;
+
+            // Toggle y1 axis visibility
+            spo2Chart.options.scales.y1.display = showHeartRate;
+
+            // Toggle legend visibility
+            spo2Chart.options.plugins.legend.display = showHeartRate;
+
+            spo2Chart.update();
+        }
+
+        updateChartTitle();
     }
 
     // Reset refresh progress bar animation
@@ -474,10 +591,18 @@
                 // Extract therapy periods for chart shading
                 therapyPeriods = extractTherapyPeriods(data.readings);
 
+                // SpO2 data
                 spo2Chart.data.datasets[0].data = data.readings.map(r => ({
                     x: new Date(r.timestamp),
                     y: r.spo2
                 }));
+
+                // Heart rate data
+                spo2Chart.data.datasets[1].data = data.readings.map(r => ({
+                    x: new Date(r.timestamp),
+                    y: r.heart_rate
+                }));
+
                 spo2Chart.update('none');
             }
         } catch (error) {

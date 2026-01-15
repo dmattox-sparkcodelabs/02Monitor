@@ -444,6 +444,7 @@ class CheckmeO2Reader:
         switch_timeout_minutes: int = 5,
         bounce_interval_minutes: int = 1,
         respawn_delay_seconds: int = 15,
+        bt_restart_threshold_minutes: int = 5,
     ):
         self.mac_address = mac_address
         self.callback = callback
@@ -452,6 +453,7 @@ class CheckmeO2Reader:
         self.switch_timeout_seconds = switch_timeout_minutes * 60
         self.bounce_interval_seconds = bounce_interval_minutes * 60
         self.respawn_delay_seconds = respawn_delay_seconds
+        self.bt_restart_threshold_seconds = bt_restart_threshold_minutes * 60
 
         # Process management
         self._process: Optional[mp.Process] = None
@@ -470,6 +472,7 @@ class CheckmeO2Reader:
         self._consecutive_failures: int = 0
         self._disconnect_start_time: Optional[float] = None
         self._last_successful_reading_time: Optional[float] = None
+        self._last_bt_restart_time: float = 0
 
         # Adapter management
         self._adapter_manager: Optional[AdapterManager] = None
@@ -605,6 +608,33 @@ class CheckmeO2Reader:
         # Start new worker
         self._start_worker()
 
+    def _restart_bluetooth_service(self) -> bool:
+        """Restart the Bluetooth service to clear stale state.
+
+        Returns:
+            True if restart was successful
+        """
+        try:
+            logger.warning("Restarting Bluetooth service to clear stale state...")
+            result = subprocess.run(
+                ['sudo', 'systemctl', 'restart', 'bluetooth'],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            if result.returncode == 0:
+                logger.info("Bluetooth service restarted successfully")
+                self._last_bt_restart_time = time.time()
+                # Give the service time to fully initialize
+                time.sleep(3)
+                return True
+            else:
+                logger.error(f"Failed to restart Bluetooth service: {result.stderr}")
+                return False
+        except Exception as e:
+            logger.error(f"Error restarting Bluetooth service: {e}")
+            return False
+
     def _start_worker(self):
         """Start the BLE worker process."""
         self._queue = self._mp_context.Queue()
@@ -685,6 +715,16 @@ class CheckmeO2Reader:
                         logger.error(f"BLE connection issues: {self._consecutive_failures} consecutive failures over {disconnect_mins}m {disconnect_secs}s")
                     else:
                         logger.warning(f"BLE worker died (failure #{self._consecutive_failures}, outage: {disconnect_mins}m {disconnect_secs}s), waiting {self.respawn_delay_seconds}s...")
+
+                    # Check if we should restart Bluetooth service
+                    if self.bt_restart_threshold_seconds > 0:
+                        time_since_last_bt_restart = time.time() - self._last_bt_restart_time
+                        if (disconnect_duration >= self.bt_restart_threshold_seconds and
+                                time_since_last_bt_restart >= self.bt_restart_threshold_seconds):
+                            logger.warning(f"Disconnect duration ({disconnect_mins}m {disconnect_secs}s) exceeded threshold, restarting Bluetooth service...")
+                            self._restart_bluetooth_service()
+                            # Re-discover and activate adapters after BT restart
+                            self._select_and_activate_adapter()
 
                     time.sleep(self.respawn_delay_seconds)
                     self._start_worker()
@@ -825,6 +865,7 @@ def get_reader(config, callback=None, error_callback=None):
         switch_timeout = config.bluetooth.switch_timeout_minutes if hasattr(config, 'bluetooth') else 5
         bounce_interval = config.bluetooth.bounce_interval_minutes if hasattr(config, 'bluetooth') else 1
         respawn_delay = config.bluetooth.respawn_delay_seconds if hasattr(config, 'bluetooth') else 15
+        bt_restart_threshold = config.bluetooth.bt_restart_threshold_minutes if hasattr(config, 'bluetooth') else 5
 
         logger.info(f"Using CheckmeO2Reader (multiprocessing mode, {len(adapters_config) if adapters_config else 0} adapters)")
         return CheckmeO2Reader(
@@ -836,4 +877,5 @@ def get_reader(config, callback=None, error_callback=None):
             switch_timeout_minutes=switch_timeout,
             bounce_interval_minutes=bounce_interval,
             respawn_delay_seconds=respawn_delay,
+            bt_restart_threshold_minutes=bt_restart_threshold,
         )

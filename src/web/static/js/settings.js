@@ -49,6 +49,7 @@
         switchTimeout: document.getElementById('switch-timeout'),
         bounceInterval: document.getElementById('bounce-interval'),
         respawnDelay: document.getElementById('respawn-delay'),
+        btRestartThreshold: document.getElementById('bt-restart-threshold'),
 
         // Save
         saveBtn: document.getElementById('save-settings'),
@@ -138,6 +139,7 @@
             setValue('switchTimeout', config.bluetooth.switch_timeout_minutes);
             setValue('bounceInterval', config.bluetooth.bounce_interval_minutes);
             setValue('respawnDelay', config.bluetooth.respawn_delay_seconds);
+            setValue('btRestartThreshold', config.bluetooth.bt_restart_threshold_minutes);
         }
     }
 
@@ -376,7 +378,8 @@
                 late_reading_seconds: parseInt(elements.lateReading?.value || 30),
                 switch_timeout_minutes: parseInt(elements.switchTimeout?.value || 5),
                 bounce_interval_minutes: parseInt(elements.bounceInterval?.value || 1),
-                respawn_delay_seconds: parseInt(elements.respawnDelay?.value || 15)
+                respawn_delay_seconds: parseInt(elements.respawnDelay?.value || 15),
+                bt_restart_threshold_minutes: parseInt(elements.btRestartThreshold?.value || 5)
             }
         };
 

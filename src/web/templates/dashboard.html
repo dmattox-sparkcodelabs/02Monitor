@@ -80,6 +80,8 @@
                 <button class="btn btn-sm" data-range="1">1h</button>
                 <button class="btn btn-sm active" data-range="6">6h</button>
                 <button class="btn btn-sm" data-range="24">24h</button>
+                <span class="chart-controls-divider">|</span>
+                <button class="btn btn-sm" id="hr-toggle-btn">HR</button>
             </div>
         </div>
         <canvas id="spo2-chart"></canvas>
@@ -100,5 +102,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/dashboard.js') }}?v=15"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}?v=16"></script>
 {% endblock %}

@@ -93,6 +93,8 @@ class BluetoothConfig:
     bounce_interval_minutes: int = 1
     # Delay before respawning worker when device not found (seconds)
     respawn_delay_seconds: int = 15
+    # Restart Bluetooth service after this many minutes of consecutive failures (0 = disabled)
+    bt_restart_threshold_minutes: int = 5
 
 
 @dataclass
@@ -660,6 +662,7 @@ def save_config(config: Config, config_path: str = "config.yaml") -> None:
         'switch_timeout_minutes': config.bluetooth.switch_timeout_minutes,
         'bounce_interval_minutes': config.bluetooth.bounce_interval_minutes,
         'respawn_delay_seconds': config.bluetooth.respawn_delay_seconds,
+        'bt_restart_threshold_minutes': config.bluetooth.bt_restart_threshold_minutes,
     }
 
     # Write back
