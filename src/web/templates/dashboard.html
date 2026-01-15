@@ -18,31 +18,44 @@
     <div class="vitals-grid">
         <div class="vital-card spo2-card">
             <div class="vital-label">SpO2</div>
-            <div class="vital-value" id="spo2-value">--</div>
-            <div class="vital-unit">%</div>
+            <div class="vital-reading">
+                <span class="vital-value" id="spo2-value">--</span><span class="vital-unit">%</span>
+            </div>
             <div class="vital-status" id="spo2-status"></div>
         </div>
 
         <div class="vital-card hr-card">
             <div class="vital-label">Heart Rate</div>
-            <div class="vital-value" id="hr-value">--</div>
-            <div class="vital-unit">BPM</div>
+            <div class="vital-reading">
+                <span class="vital-value" id="hr-value">--</span><span class="vital-unit">bpm</span>
+            </div>
             <div class="vital-status" id="hr-status"></div>
         </div>
 
         <div class="vital-card avaps-card">
             <div class="vital-label">AVAPS</div>
-            <div class="vital-value" id="avaps-status">--</div>
+            <div class="vital-reading">
+                <span class="vital-value" id="avaps-status">--</span>
+            </div>
             <div class="vital-detail" id="avaps-power"></div>
         </div>
     </div>
 
     <!-- Status Indicators -->
     <div class="status-grid">
-        <div class="status-item">
-            <span class="status-indicator" id="ble-indicator"></span>
-            <span class="status-label">BLE</span>
-            <span class="status-value" id="ble-status">--</span>
+        <div class="status-item adapter-card">
+            <div class="adapter-row">
+                <div class="adapter-item" id="adapter-hallway">
+                    <span class="adapter-indicator offline" id="adapter-hallway-indicator"></span>
+                    <span class="status-label">Hallway</span>
+                    <span class="status-value" id="adapter-hallway-status">--</span>
+                </div>
+                <div class="adapter-item" id="adapter-bedroom">
+                    <span class="adapter-indicator offline" id="adapter-bedroom-indicator"></span>
+                    <span class="status-label">Bedroom</span>
+                    <span class="status-value" id="adapter-bedroom-status">--</span>
+                </div>
+            </div>
         </div>
         <div class="status-item">
             <span class="status-indicator" id="battery-indicator"></span>
@@ -87,5 +100,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/dashboard.js') }}?v=12"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}?v=14"></script>
 {% endblock %}

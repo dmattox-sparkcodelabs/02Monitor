@@ -600,3 +600,122 @@ async def _discover_plugs():
         })
 
     return devices
+
+
+# ==================== Bluetooth Adapters ====================
+
+# Adapter configuration - maps MAC addresses to names
+ADAPTER_CONFIG = {
+    '10:A5:62:EC:E8:A5': {'name': 'Hallway', 'id': 'hallway'},
+    '10:A5:62:79:03:8A': {'name': 'Bedroom', 'id': 'bedroom'},
+}
+
+
+@api_bp.route('/adapters')
+@api_login_required
+def get_adapters():
+    """Get Bluetooth adapter status."""
+    import subprocess
+    import re
+
+    adapters = []
+
+    try:
+        # Run hciconfig to get adapter info
+        result = subprocess.run(
+            ['hciconfig', '-a'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        if result.returncode != 0:
+            return jsonify({'error': 'Failed to get adapter info'}), 500
+
+        # Parse hciconfig output
+        current_adapter = None
+        for line in result.stdout.split('\n'):
+            # New adapter line: "hci0:  Type: Primary  Bus: USB"
+            hci_match = re.match(r'^(hci\d+):', line)
+            if hci_match:
+                if current_adapter:
+                    adapters.append(current_adapter)
+                current_adapter = {
+                    'hci': hci_match.group(1),
+                    'mac': None,
+                    'up': False,
+                    'running': False,
+                    'name': 'Unknown',
+                    'id': 'unknown',
+                    'status': 'offline',
+                }
+                # Check for UP RUNNING on same line
+                if 'UP' in line:
+                    current_adapter['up'] = True
+                if 'RUNNING' in line:
+                    current_adapter['running'] = True
+
+            elif current_adapter:
+                # BD Address line
+                bd_match = re.search(r'BD Address:\s*([0-9A-Fa-f:]+)', line)
+                if bd_match:
+                    mac = bd_match.group(1).upper()
+                    current_adapter['mac'] = mac
+                    # Look up adapter name from config
+                    if mac in ADAPTER_CONFIG:
+                        current_adapter['name'] = ADAPTER_CONFIG[mac]['name']
+                        current_adapter['id'] = ADAPTER_CONFIG[mac]['id']
+
+                # Check UP RUNNING status on separate line
+                if 'UP RUNNING' in line:
+                    current_adapter['up'] = True
+                    current_adapter['running'] = True
+                elif 'UP' in line and 'DOWN' not in line:
+                    current_adapter['up'] = True
+                elif 'DOWN' in line:
+                    current_adapter['up'] = False
+
+        # Don't forget the last adapter
+        if current_adapter:
+            adapters.append(current_adapter)
+
+        # Determine status for each adapter
+        # Check if BLE reader is connected and which adapter it's using
+        ble_connected = False
+        active_adapter_mac = None
+
+        if g.state_machine and g.state_machine.ble_reader:
+            ble_reader = g.state_machine.ble_reader
+            ble_connected = ble_reader.is_connected
+
+        for adapter in adapters:
+            if not adapter['up']:
+                adapter['status'] = 'offline'
+                adapter['status_text'] = 'Offline'
+            elif ble_connected and adapter['running']:
+                # For now, mark the first running adapter as active when connected
+                # In future, we could track which adapter is actually being used
+                if active_adapter_mac is None:
+                    adapter['status'] = 'active'
+                    adapter['status_text'] = 'Connected'
+                    active_adapter_mac = adapter['mac']
+                else:
+                    adapter['status'] = 'standby'
+                    adapter['status_text'] = 'Standby'
+            elif adapter['running']:
+                adapter['status'] = 'standby'
+                adapter['status_text'] = 'Ready'
+            else:
+                adapter['status'] = 'error'
+                adapter['status_text'] = 'Error'
+
+        return jsonify({
+            'adapters': adapters,
+            'ble_connected': ble_connected,
+        })
+
+    except subprocess.TimeoutExpired:
+        return jsonify({'error': 'Timeout getting adapter info'}), 500
+    except Exception as e:
+        logger.error(f"Error getting adapter status: {e}")
+        return jsonify({'error': str(e)}), 500

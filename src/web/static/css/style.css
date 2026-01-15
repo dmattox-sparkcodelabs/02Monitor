@@ -351,26 +351,33 @@ body {
 }
 
 .vital-label {
-    font-size: 0.875rem;
+    font-size: 1rem;
     color: var(--text-muted);
     text-transform: uppercase;
     margin-bottom: 0.5rem;
 }
 
+.vital-reading {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+}
+
 .vital-value {
-    font-size: 3rem;
+    font-size: 7rem;
     font-weight: bold;
     line-height: 1;
 }
 
 .vital-unit {
-    font-size: 1rem;
+    font-size: 2rem;
     color: var(--text-muted);
+    margin-left: 0.25rem;
 }
 
 .vital-status {
     margin-top: 0.5rem;
-    font-size: 0.875rem;
+    font-size: 1rem;
 }
 
 .spo2-card .vital-value {
@@ -382,7 +389,7 @@ body {
 }
 
 .avaps-card .vital-value {
-    /* Same size as SpO2/HR */
+    color: var(--text-color);
 }
 
 /* Status Grid */
@@ -404,6 +411,25 @@ body {
     gap: 0.25rem;
 }
 
+/* Adapter card - contains both adapters */
+.status-item.adapter-card {
+    padding: 1rem;
+}
+
+.adapter-row {
+    display: flex;
+    gap: 1.5rem;
+    width: 100%;
+    justify-content: center;
+}
+
+.adapter-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+}
+
 .status-indicator {
     width: 12px;
     height: 12px;
@@ -417,6 +443,41 @@ body {
 
 .status-indicator.disconnected {
     background: var(--danger-color);
+}
+
+/* Bluetooth Adapter Indicators (used in status grid) */
+.adapter-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.adapter-indicator.active {
+    background: var(--success-color);
+    box-shadow: 0 0 6px var(--success-color);
+}
+
+.adapter-indicator.connecting {
+    background: var(--warning-color);
+    animation: pulse-adapter 1.5s ease-in-out infinite;
+}
+
+.adapter-indicator.standby {
+    background: var(--primary-color);
+}
+
+.adapter-indicator.error {
+    background: var(--danger-color);
+}
+
+.adapter-indicator.offline {
+    background: #9E9E9E;
+}
+
+@keyframes pulse-adapter {
+    0%, 100% { opacity: 1; box-shadow: 0 0 4px var(--warning-color); }
+    50% { opacity: 0.5; box-shadow: 0 0 8px var(--warning-color); }
 }
 
 .status-label {
