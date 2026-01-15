@@ -70,6 +70,7 @@ class O2MonitorStateMachine:
     AVAPS_POLL_INTERVAL = 5.0      # Seconds between AVAPS power checks
     HEARTBEAT_INTERVAL = 60.0      # Seconds between heartbeat pings
     CLEANUP_INTERVAL = 86400       # Seconds between database cleanups (24 hours)
+    POWER_ONLY_SAVE_INTERVAL = 30  # Seconds between power-only saves when disconnected
 
     def __init__(
         self,
@@ -107,6 +108,7 @@ class O2MonitorStateMachine:
         self._last_stored_reading: Optional[OxiReading] = None
         self._avaps_state = AVAPSState.UNKNOWN
         self._last_avaps_poll = datetime.min
+        self._last_any_reading_stored = datetime.min  # Tracks O2 or power-only saves
 
         # Low SpO2 tracking
         self._low_spo2_start: Optional[datetime] = None
@@ -246,6 +248,12 @@ class O2MonitorStateMachine:
                 self._current_reading is not self._last_stored_reading):
             await self._store_reading(self._current_reading)
             self._last_stored_reading = self._current_reading
+        else:
+            # No new O2 reading - save power-only reading periodically
+            # This ensures continuous AVAPS data during BLE outages
+            time_since_last_save = (now - self._last_any_reading_stored).total_seconds()
+            if time_since_last_save >= self.POWER_ONLY_SAVE_INTERVAL:
+                await self._store_power_only_reading()
 
         # Evaluate alerts using new therapy-aware system
         await self._evaluate_alerts()
@@ -506,8 +514,29 @@ class O2MonitorStateMachine:
             if self.avaps_monitor:
                 power_watts = self.avaps_monitor.last_power
             await self.database.insert_reading(reading, self._avaps_state, power_watts)
+            self._last_any_reading_stored = datetime.now()
         except Exception as e:
             logger.error(f"Failed to store reading: {e}")
+
+    async def _store_power_only_reading(self) -> None:
+        """Store power-only reading when O2 sensor is disconnected.
+
+        This ensures we have continuous AVAPS/power data even during
+        BLE outages, and makes gaps in O2 data visible in the database.
+        """
+        try:
+            power_watts = None
+            if self.avaps_monitor:
+                power_watts = self.avaps_monitor.last_power
+            await self.database.insert_reading(
+                reading=None,
+                avaps_state=self._avaps_state,
+                power_watts=power_watts
+            )
+            self._last_any_reading_stored = datetime.now()
+            logger.debug(f"Stored power-only reading: {power_watts}W, AVAPS: {self._avaps_state.value}")
+        except Exception as e:
+            logger.error(f"Failed to store power-only reading: {e}")
 
     async def _poll_avaps(self) -> None:
         """Poll AVAPS power state."""

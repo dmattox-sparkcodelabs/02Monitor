@@ -189,32 +189,51 @@ class Database:
 
     async def insert_reading(
         self,
-        reading: OxiReading,
+        reading: Optional[OxiReading] = None,
         avaps_state: AVAPSState = AVAPSState.UNKNOWN,
-        power_watts: Optional[float] = None
+        power_watts: Optional[float] = None,
+        timestamp: Optional[datetime] = None
     ) -> int:
-        """Insert a new SpO2/HR reading.
+        """Insert a new reading (with or without O2 data).
 
         Args:
-            reading: OxiReading object with vitals data
+            reading: OxiReading object with vitals data (None for power-only readings)
             avaps_state: Current AVAPS state
             power_watts: Current AVAPS power consumption in watts
+            timestamp: Timestamp for power-only readings (ignored if reading provided)
 
         Returns:
             ID of the inserted row
         """
+        if reading is not None:
+            # Full reading with O2 data
+            ts = reading.timestamp.isoformat()
+            spo2 = reading.spo2
+            heart_rate = reading.heart_rate
+            battery_level = reading.battery_level
+            movement = reading.movement
+            is_valid = reading.is_valid
+        else:
+            # Power-only reading (O2 disconnected)
+            ts = (timestamp or datetime.now()).isoformat()
+            spo2 = None
+            heart_rate = None
+            battery_level = None
+            movement = None
+            is_valid = False
+
         async with self._connection.cursor() as cursor:
             await cursor.execute("""
                 INSERT INTO readings
                 (timestamp, spo2, heart_rate, battery_level, movement, is_valid, avaps_state, power_watts)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                reading.timestamp.isoformat(),
-                reading.spo2,
-                reading.heart_rate,
-                reading.battery_level,
-                reading.movement,
-                reading.is_valid,
+                ts,
+                spo2,
+                heart_rate,
+                battery_level,
+                movement,
+                is_valid,
                 avaps_state.value,
                 power_watts,
             ))
