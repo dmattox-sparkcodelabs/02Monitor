@@ -100,7 +100,8 @@ class Database:
                     battery_level INTEGER,
                     movement INTEGER,
                     is_valid BOOLEAN,
-                    avaps_state TEXT
+                    avaps_state TEXT,
+                    power_watts REAL
                 )
             """)
 
@@ -109,6 +110,13 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_readings_timestamp
                 ON readings(timestamp)
             """)
+
+            # Migration: Add power_watts column if it doesn't exist
+            await cursor.execute("PRAGMA table_info(readings)")
+            columns = [row[1] for row in await cursor.fetchall()]
+            if 'power_watts' not in columns:
+                await cursor.execute("ALTER TABLE readings ADD COLUMN power_watts REAL")
+                logger.info("Added power_watts column to readings table")
 
             # Alerts table
             await cursor.execute("""
@@ -182,13 +190,15 @@ class Database:
     async def insert_reading(
         self,
         reading: OxiReading,
-        avaps_state: AVAPSState = AVAPSState.UNKNOWN
+        avaps_state: AVAPSState = AVAPSState.UNKNOWN,
+        power_watts: Optional[float] = None
     ) -> int:
         """Insert a new SpO2/HR reading.
 
         Args:
             reading: OxiReading object with vitals data
             avaps_state: Current AVAPS state
+            power_watts: Current AVAPS power consumption in watts
 
         Returns:
             ID of the inserted row
@@ -196,8 +206,8 @@ class Database:
         async with self._connection.cursor() as cursor:
             await cursor.execute("""
                 INSERT INTO readings
-                (timestamp, spo2, heart_rate, battery_level, movement, is_valid, avaps_state)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (timestamp, spo2, heart_rate, battery_level, movement, is_valid, avaps_state, power_watts)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 reading.timestamp.isoformat(),
                 reading.spo2,
@@ -206,6 +216,7 @@ class Database:
                 reading.movement,
                 reading.is_valid,
                 avaps_state.value,
+                power_watts,
             ))
             await self._connection.commit()
             return cursor.lastrowid

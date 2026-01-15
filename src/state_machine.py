@@ -501,7 +501,11 @@ class O2MonitorStateMachine:
             reading: OxiReading to store
         """
         try:
-            await self.database.insert_reading(reading, self._avaps_state)
+            # Get current power reading from AVAPS monitor
+            power_watts = None
+            if self.avaps_monitor:
+                power_watts = self.avaps_monitor.last_power
+            await self.database.insert_reading(reading, self._avaps_state, power_watts)
         except Exception as e:
             logger.error(f"Failed to store reading: {e}")
 

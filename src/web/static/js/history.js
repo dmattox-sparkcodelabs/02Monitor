@@ -16,6 +16,7 @@
     // State
     let spo2Chart = null;
     let hrChart = null;
+    let powerChart = null;
     let currentHours = 24;
 
     // DOM Elements
@@ -232,6 +233,62 @@
                 plugins: [hrZonesPlugin]
             });
         }
+
+        // Power Chart
+        const powerCtx = document.getElementById('power-history-chart');
+        if (powerCtx) {
+            powerChart = new Chart(powerCtx, {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        label: 'Power (Watts)',
+                        data: [],
+                        borderColor: '#4CAF50',
+                        backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                        fill: true,
+                        tension: 0.2,
+                        pointRadius: 1,
+                        pointHitRadius: 10
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'hour',
+                                displayFormats: {
+                                    hour: 'MMM d, h:mm a'
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        },
+                        y: {
+                            min: 0,
+                            max: 30,
+                            title: {
+                                display: true,
+                                text: 'Power (Watts)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    }
+                }
+            });
+        }
     }
 
     // Set up event listeners
@@ -353,6 +410,16 @@
             }));
             hrChart.update('none');
         }
+
+        if (powerChart) {
+            powerChart.data.datasets[0].data = readings
+                .filter(r => r.power_watts !== null && r.power_watts !== undefined)
+                .map(r => ({
+                    x: new Date(r.timestamp),
+                    y: r.power_watts
+                }));
+            powerChart.update('none');
+        }
     }
 
     // Update data table
@@ -365,6 +432,9 @@
         elements.readingsTbody.innerHTML = recentReadings.map(r => {
             const time = new Date(r.timestamp);
             const spo2Class = r.spo2 < 90 ? 'style="color: #f44336; font-weight: bold;"' : '';
+            const powerDisplay = r.power_watts !== null && r.power_watts !== undefined
+                ? r.power_watts.toFixed(1) + 'W'
+                : '--';
 
             return `
                 <tr>
@@ -372,6 +442,7 @@
                     <td ${spo2Class}>${r.spo2}%</td>
                     <td>${r.heart_rate} BPM</td>
                     <td>${r.avaps_state === 'on' ? 'ON' : 'OFF'}</td>
+                    <td>${powerDisplay}</td>
                     <td>${r.is_valid ? 'Yes' : 'No'}</td>
                 </tr>
             `;
@@ -380,7 +451,7 @@
         if (recentReadings.length === 0) {
             elements.readingsTbody.innerHTML = `
                 <tr>
-                    <td colspan="5" class="no-data">No readings found for the selected time period.</td>
+                    <td colspan="6" class="no-data">No readings found for the selected time period.</td>
                 </tr>
             `;
         }

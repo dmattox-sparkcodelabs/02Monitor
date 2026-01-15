@@ -58,6 +58,12 @@
         <canvas id="hr-history-chart"></canvas>
     </div>
 
+    <!-- Power Chart -->
+    <div class="chart-container">
+        <h3>AVAPS Power (Watts)</h3>
+        <canvas id="power-history-chart"></canvas>
+    </div>
+
     <!-- Data Table -->
     <div class="data-table-container">
         <h3>Recent Readings</h3>
@@ -68,6 +74,7 @@
                     <th>SpO2</th>
                     <th>HR</th>
                     <th>AVAPS</th>
+                    <th>Power</th>
                     <th>Valid</th>
                 </tr>
             </thead>
@@ -80,5 +87,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/history.js') }}?v=8"></script>
+<script src="{{ url_for('static', filename='js/history.js') }}?v=9"></script>
 {% endblock %}
