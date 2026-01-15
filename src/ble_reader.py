@@ -608,6 +608,35 @@ class CheckmeO2Reader:
         # Start new worker
         self._start_worker()
 
+    def _clear_ghost_connection(self) -> bool:
+        """Remove device from BlueZ cache to clear ghost connection state.
+
+        When BLE connection drops dirty (no disconnect packet), BlueZ may still
+        think the device is connected and filter out its advertisements.
+        Removing the device forces BlueZ to forget this stale state.
+
+        Returns:
+            True if removal was successful
+        """
+        try:
+            logger.info(f"Clearing ghost connection state for {self.mac_address}...")
+            result = subprocess.run(
+                ['bluetoothctl', 'remove', self.mac_address],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if result.returncode == 0 or 'not available' in result.stdout.lower():
+                logger.info("Device removed from BlueZ cache")
+                time.sleep(2)  # Give BlueZ time to propagate
+                return True
+            else:
+                logger.warning(f"bluetoothctl remove returned: {result.stdout} {result.stderr}")
+                return False
+        except Exception as e:
+            logger.warning(f"Error clearing ghost connection: {e}")
+            return False
+
     def _restart_bluetooth_service(self) -> bool:
         """Restart the Bluetooth service to clear stale state.
 
@@ -615,6 +644,9 @@ class CheckmeO2Reader:
             True if restart was successful
         """
         try:
+            # First try the surgical approach - remove the device
+            self._clear_ghost_connection()
+
             logger.warning("Restarting Bluetooth service to clear stale state...")
             result = subprocess.run(
                 ['sudo', 'systemctl', 'restart', 'bluetooth'],
@@ -705,6 +737,10 @@ class CheckmeO2Reader:
                     # Log with escalating severity based on consecutive failures
                     if self._consecutive_failures == 1:
                         logger.warning(f"BLE worker process died, waiting {self.respawn_delay_seconds}s before restarting...")
+                    elif self._consecutive_failures == 3:
+                        # Try clearing ghost connection state early (surgical fix)
+                        logger.warning(f"BLE connection issues: 3 consecutive failures, clearing ghost connection state...")
+                        self._clear_ghost_connection()
                     elif self._consecutive_failures == 5:
                         logger.warning(f"BLE connection issues: 5 consecutive failures over {disconnect_mins}m {disconnect_secs}s")
                     elif self._consecutive_failures == 10:
