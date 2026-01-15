@@ -371,7 +371,7 @@
                     <td>${formatTime(time)}</td>
                     <td ${spo2Class}>${r.spo2}%</td>
                     <td>${r.heart_rate} BPM</td>
-                    <td>${r.avaps_on ? 'ON' : 'OFF'}</td>
+                    <td>${r.avaps_state === 'on' ? 'ON' : 'OFF'}</td>
                     <td>${r.is_valid ? 'Yes' : 'No'}</td>
                 </tr>
             `;
