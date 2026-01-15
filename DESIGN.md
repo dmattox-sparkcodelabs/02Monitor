@@ -192,7 +192,65 @@ bluetooth:
   late_reading_seconds: 30
   switch_timeout_minutes: 5
   bounce_interval_minutes: 1
+  respawn_delay_seconds: 15
+  bt_restart_threshold_minutes: 5
 ```
+
+### 3.1.2 BLE Connection Reliability
+
+The Realtek RTL8761B chipset (used in ASUS BT500 adapters) requires special handling to maintain stable BLE connections on Raspberry Pi.
+
+#### Ghost Connection Problem
+
+When a BLE connection drops "dirty" (no disconnect packet sent), BlueZ may still believe the device is connected. This causes:
+1. BlueZ filters out advertisement packets from the "connected" MAC address
+2. The device appears undiscoverable even though it's still advertising
+3. Only a Bluetooth service restart clears this state
+
+**Solution - Surgical Device Removal:**
+```python
+def _clear_ghost_connection(self) -> bool:
+    """Remove device from BlueZ cache to clear ghost connection state."""
+    subprocess.run(['bluetoothctl', 'remove', self.mac_address], timeout=10)
+    time.sleep(2)  # Allow BlueZ to propagate
+```
+
+This is called:
+- After 3 consecutive connection failures (early intervention)
+- Before any full Bluetooth service restart
+
+#### USB Autosuspend Problem
+
+The Realtek chipset crashes when Linux puts it into low-power mode during idle gaps, causing I/O errors and connection failures.
+
+**Solution - Disable USB Autosuspend:**
+
+1. **Udev Rule** (`/etc/udev/rules.d/50-bluetooth-power.rules`):
+```
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="6655", ATTR{idProduct}=="8771", ATTR{power/autosuspend}="-1", ATTR{power/control}="on"
+```
+
+2. **Boot Config** (`/boot/cmdline.txt`):
+```
+usbcore.autosuspend=-1
+```
+
+#### Recovery Escalation
+
+| Failures | Action | Purpose |
+|----------|--------|---------|
+| 1 | Wait respawn_delay (15s) | Allow transient issues to clear |
+| 3 | Clear ghost connection | Surgical fix for stale BlueZ state |
+| 5 min | Restart Bluetooth service | Nuclear option if surgical fix fails |
+
+#### Connection Health Tracking
+
+The BLE reader tracks:
+- `_consecutive_failures`: Count of failed connection attempts
+- `_disconnect_start_time`: When the outage began
+- `_last_bt_restart_time`: Cooldown for service restarts
+
+Recovery is logged with duration: `CONNECTION RECOVERED: 5 failures over 2m 30s outage`
 
 ### 3.2 AVAPS Monitor (`avaps_monitor.py`)
 
