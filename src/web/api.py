@@ -47,7 +47,9 @@ def run_async(coro):
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-    return loop.run_until_complete(coro)
+    # Wrap in task for aiohttp 3.x compatibility
+    task = loop.create_task(coro)
+    return loop.run_until_complete(task)
 
 
 # ==================== Health Check ====================
@@ -177,6 +179,85 @@ def get_readings():
         'start_time': start_time.isoformat(),
         'end_time': end_time.isoformat(),
     })
+
+
+@api_bp.route('/readings/export')
+@api_login_required
+def export_readings_csv():
+    """Export readings as CSV file."""
+    import csv
+    import io
+    from flask import Response
+
+    if not g.database:
+        return jsonify({'error': 'Database not available'}), 503
+
+    # Parse query parameters (same as get_readings)
+    start_str = request.args.get('start')
+    end_str = request.args.get('end')
+
+    if start_str and end_str:
+        try:
+            start_clean = start_str.replace('Z', '').replace('+00:00', '')
+            end_clean = end_str.replace('Z', '').replace('+00:00', '')
+            start_utc = datetime.fromisoformat(start_clean)
+            end_utc = datetime.fromisoformat(end_clean)
+
+            import time
+            import calendar
+            now = time.time()
+            local_time = time.localtime(now)
+            if hasattr(local_time, 'tm_gmtoff'):
+                utc_offset = timedelta(seconds=local_time.tm_gmtoff)
+            else:
+                utc_offset = timedelta(seconds=calendar.timegm(local_time) - int(now))
+            start_time = start_utc + utc_offset
+            end_time = end_utc + utc_offset
+        except ValueError:
+            return jsonify({'error': 'Invalid date format'}), 400
+    else:
+        hours = int(request.args.get('hours', 24))
+        end_time = datetime.now()
+        start_time = end_time - timedelta(hours=hours)
+
+    # Fetch all readings (no limit for export)
+    readings = run_async(g.database.get_readings(
+        start_time=start_time,
+        end_time=end_time,
+        limit=500000,
+    ))
+
+    # Generate CSV
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Header row
+    writer.writerow(['Timestamp', 'SpO2 (%)', 'Heart Rate (BPM)', 'AVAPS State', 'Power (Watts)', 'Battery (%)', 'Valid'])
+
+    # Data rows
+    for r in readings:
+        writer.writerow([
+            r.get('timestamp', ''),
+            r.get('spo2', ''),
+            r.get('heart_rate', ''),
+            r.get('avaps_state', ''),
+            r.get('power_watts', '') if r.get('power_watts') is not None else '',
+            r.get('battery_level', '') if r.get('battery_level') is not None else '',
+            'Yes' if r.get('is_valid') else 'No',
+        ])
+
+    # Create response with CSV content
+    csv_content = output.getvalue()
+    output.close()
+
+    # Generate filename with date range
+    filename = f"o2monitor_{start_time.strftime('%Y%m%d')}_{end_time.strftime('%Y%m%d')}.csv"
+
+    return Response(
+        csv_content,
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename={filename}'}
+    )
 
 
 @api_bp.route('/readings/range')
@@ -444,7 +525,7 @@ def get_config():
         'thresholds': {
             'avaps': {
                 'on_watts': config.thresholds.avaps.on_watts,
-                'off_watts': config.thresholds.avaps.off_watts,
+                'window_minutes': config.thresholds.avaps.window_minutes,
             },
         },
         'alerting': {
@@ -554,9 +635,9 @@ def update_config():
             if 'on_watts' in t['avaps']:
                 config.thresholds.avaps.on_watts = float(t['avaps']['on_watts'])
                 updated.append('avaps.on_watts')
-            if 'off_watts' in t['avaps']:
-                config.thresholds.avaps.off_watts = float(t['avaps']['off_watts'])
-                updated.append('avaps.off_watts')
+            if 'window_minutes' in t['avaps']:
+                config.thresholds.avaps.window_minutes = int(t['avaps']['window_minutes'])
+                updated.append('avaps.window_minutes')
 
     # Update alerting
     if 'alerting' in data:

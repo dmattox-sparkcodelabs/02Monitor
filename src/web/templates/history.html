@@ -23,6 +23,7 @@
             <label>From: <input type="datetime-local" id="start-date"></label>
             <label>To: <input type="datetime-local" id="end-date"></label>
             <button class="btn btn-sm btn-primary" id="load-range">Load</button>
+            <button class="btn btn-sm btn-secondary" id="export-csv">Export CSV</button>
         </div>
     </div>
 
@@ -87,5 +88,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/history.js') }}?v=9"></script>
+<script src="{{ url_for('static', filename='js/history.js') }}?v=10"></script>
 {% endblock %}

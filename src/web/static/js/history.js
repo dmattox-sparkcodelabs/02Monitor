@@ -28,6 +28,7 @@
         startDate: document.getElementById('start-date'),
         endDate: document.getElementById('end-date'),
         loadRangeBtn: document.getElementById('load-range'),
+        exportCsvBtn: document.getElementById('export-csv'),
         readingsTbody: document.getElementById('readings-tbody')
     };
 
@@ -307,6 +308,11 @@
         if (elements.loadRangeBtn) {
             elements.loadRangeBtn.addEventListener('click', loadCustomRange);
         }
+
+        // Export CSV button
+        if (elements.exportCsvBtn) {
+            elements.exportCsvBtn.addEventListener('click', exportCsv);
+        }
     }
 
     // Set default dates
@@ -355,6 +361,38 @@
         document.querySelectorAll('.date-preset-buttons .btn').forEach(b => b.classList.remove('active'));
 
         await fetchAndDisplayData(startTime, endTime);
+    }
+
+    // Export data to CSV
+    function exportCsv() {
+        // Determine time range based on current selection
+        let startTime, endTime;
+        const activePreset = document.querySelector('.date-preset-buttons .btn.active');
+
+        if (activePreset) {
+            // Using preset hours
+            const hours = parseInt(activePreset.dataset.hours);
+            endTime = new Date();
+            startTime = new Date(endTime - hours * 60 * 60 * 1000);
+        } else {
+            // Using custom range
+            startTime = new Date(elements.startDate.value);
+            endTime = new Date(elements.endDate.value);
+
+            if (isNaN(startTime.getTime()) || isNaN(endTime.getTime())) {
+                alert('Please select a valid date range first');
+                return;
+            }
+        }
+
+        // Build export URL
+        const params = new URLSearchParams({
+            start: startTime.toISOString(),
+            end: endTime.toISOString()
+        });
+
+        // Trigger download by navigating to the export endpoint
+        window.location.href = '/api/readings/export?' + params;
     }
 
     // Fetch and display data
