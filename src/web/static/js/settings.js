@@ -27,8 +27,10 @@
         avapsWindow: document.getElementById('avaps-window'),
 
         // Audio
+        audioEnabled: document.getElementById('audio-enabled'),
         audioVolume: document.getElementById('audio-volume'),
         volumeDisplay: document.getElementById('volume-display'),
+        testAudioBtn: document.getElementById('test-audio'),
 
         // PagerDuty
         pagerdutyKey: document.getElementById('pagerduty-key'),
@@ -106,6 +108,9 @@
 
         // Audio settings
         if (config.alerting && config.alerting.local_audio) {
+            if (elements.audioEnabled) {
+                elements.audioEnabled.checked = config.alerting.local_audio.enabled;
+            }
             setValue('audioVolume', config.alerting.local_audio.volume);
             updateVolumeDisplay();
         }
@@ -196,6 +201,11 @@
             elements.discoverPlugsBtn.addEventListener('click', discoverPlugs);
         }
 
+        // Test audio button
+        if (elements.testAudioBtn) {
+            elements.testAudioBtn.addEventListener('click', testAudio);
+        }
+
         // Save button
         if (elements.saveBtn) {
             elements.saveBtn.addEventListener('click', saveSettings);
@@ -256,6 +266,43 @@
     function updateVolumeDisplay() {
         if (elements.volumeDisplay && elements.audioVolume) {
             elements.volumeDisplay.textContent = elements.audioVolume.value + '%';
+        }
+    }
+
+    // Test audio
+    async function testAudio() {
+        const btn = elements.testAudioBtn;
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Playing...';
+
+        try {
+            const response = await apiFetch('/api/audio/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    volume: parseInt(elements.audioVolume?.value || 50)
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to play test audio');
+            }
+
+            btn.textContent = 'Played';
+            setTimeout(() => {
+                btn.textContent = originalText;
+            }, 1500);
+        } catch (error) {
+            console.error('Error testing audio:', error);
+            btn.textContent = 'Error';
+            setTimeout(() => {
+                btn.textContent = originalText;
+            }, 1500);
+            alert('Audio test failed: ' + error.message);
+        } finally {
+            btn.disabled = false;
         }
     }
 
@@ -361,6 +408,7 @@
             },
             alerting: {
                 local_audio: {
+                    enabled: elements.audioEnabled ? elements.audioEnabled.checked : false,
                     volume: parseInt(elements.audioVolume?.value || 90)
                 }
             },

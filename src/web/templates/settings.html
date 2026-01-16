@@ -364,10 +364,26 @@
         <!-- Audio Settings -->
         <section class="settings-section">
             <h2>Local Audio Alerts</h2>
-            <div class="form-group">
-                <label for="audio-volume">Volume</label>
-                <input type="range" id="audio-volume" min="0" max="100" value="90">
-                <span class="volume-display" id="volume-display">90%</span>
+            <p class="section-description">Play alarm sounds through the Pi's audio output</p>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="audio-enabled">
+                        <input type="checkbox" id="audio-enabled">
+                        Enable Local Audio
+                    </label>
+                    <span class="help-text">Play sounds on the Pi when alerts trigger</span>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="audio-volume">Volume</label>
+                    <input type="range" id="audio-volume" min="0" max="100" value="90">
+                    <span class="volume-display" id="volume-display">90%</span>
+                </div>
+                <div class="form-group">
+                    <button class="btn btn-sm" id="test-audio">Test Audio</button>
+                    <span class="help-text">Play a test sound</span>
+                </div>
             </div>
         </section>
 
@@ -416,5 +432,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/settings.js') }}?v=12"></script>
+<script src="{{ url_for('static', filename='js/settings.js') }}?v=13"></script>
 {% endblock %}

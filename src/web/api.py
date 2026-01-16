@@ -643,9 +643,12 @@ def update_config():
     if 'alerting' in data:
         a = data['alerting']
         if 'local_audio' in a:
+            if 'enabled' in a['local_audio']:
+                config.alerting.local_audio.enabled = bool(a['local_audio']['enabled'])
+                updated.append('alerting.local_audio.enabled')
             if 'volume' in a['local_audio']:
                 config.alerting.local_audio.volume = int(a['local_audio']['volume'])
-                updated.append('alerting.volume')
+                updated.append('alerting.local_audio.volume')
 
         if 'pagerduty' in a:
             if 'routing_key' in a['pagerduty']:
@@ -710,6 +713,52 @@ def update_config():
             'updated': updated,
             'message': f'Updated {len(updated)} settings (save to file failed: {e})',
         })
+
+
+# ==================== Audio Test ====================
+
+@api_bp.route('/audio/test', methods=['POST'])
+@api_login_required
+def test_audio():
+    """Play a test sound through local audio."""
+    import subprocess
+
+    data = request.get_json() or {}
+    volume = min(100, max(0, int(data.get('volume', 50))))
+
+    try:
+        # Set volume using amixer
+        subprocess.run(
+            ['amixer', 'set', 'Master', f'{volume}%'],
+            capture_output=True,
+            timeout=5
+        )
+
+        # Play test sound - try espeak first, then aplay with a beep
+        result = subprocess.run(
+            ['espeak', '-a', '200', 'Audio test'],
+            capture_output=True,
+            timeout=10
+        )
+
+        if result.returncode != 0:
+            # Fallback to aplay with system beep if available
+            subprocess.run(
+                ['aplay', '/usr/share/sounds/alsa/Front_Center.wav'],
+                capture_output=True,
+                timeout=10
+            )
+
+        logger.info(f"Audio test played at {volume}% by {session.get('user')}")
+        return jsonify({'success': True, 'volume': volume})
+
+    except subprocess.TimeoutExpired:
+        return jsonify({'error': 'Audio playback timed out'}), 500
+    except FileNotFoundError as e:
+        return jsonify({'error': f'Audio tool not found: {e}'}), 500
+    except Exception as e:
+        logger.error(f"Audio test failed: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 # ==================== System Events ====================
