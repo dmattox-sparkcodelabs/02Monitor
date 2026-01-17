@@ -430,16 +430,26 @@ def trigger_test_alert():
 @api_bp.route('/alerts/<alert_id>/acknowledge', methods=['POST'])
 @api_login_required
 def acknowledge_alert(alert_id: str):
-    """Acknowledge an alert."""
+    """Acknowledge an alert and resolve it in PagerDuty."""
     if not g.database:
         return jsonify({'error': 'Database not available'}), 503
 
     user = session.get('user', 'unknown')
+
+    # Acknowledge in database
     success = run_async(g.database.acknowledge_alert(alert_id, user))
 
     if success:
         logger.info(f"Alert {alert_id} acknowledged by {user}")
-        return jsonify({'success': True})
+
+        # Also resolve in AlertManager (stops audio, resolves PagerDuty)
+        if g.alert_manager:
+            run_async(g.alert_manager.resolve_alert(alert_id))
+
+        # Mark as resolved in database too
+        run_async(g.database.resolve_alert(alert_id))
+
+        return jsonify({'success': True, 'pagerduty_resolved': bool(g.alert_manager)})
     else:
         return jsonify({'error': 'Alert not found'}), 404
 
@@ -536,6 +546,7 @@ def get_config():
             'pagerduty': {
                 'configured': bool(config.alerting.pagerduty.routing_key),
                 'routing_key': config.alerting.pagerduty.routing_key or '',
+                'api_token': config.alerting.pagerduty.api_token or '',
                 'service_name': config.alerting.pagerduty.service_name,
             },
             'healthchecks': {
@@ -654,6 +665,9 @@ def update_config():
             if 'routing_key' in a['pagerduty']:
                 config.alerting.pagerduty.routing_key = a['pagerduty']['routing_key']
                 updated.append('alerting.pagerduty.routing_key')
+            if 'api_token' in a['pagerduty']:
+                config.alerting.pagerduty.api_token = a['pagerduty']['api_token']
+                updated.append('alerting.pagerduty.api_token')
 
         if 'healthchecks' in a:
             if 'ping_url' in a['healthchecks']:
@@ -978,4 +992,51 @@ def get_adapters():
         return jsonify({'error': 'Timeout getting adapter info'}), 500
     except Exception as e:
         logger.error(f"Error getting adapter status: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/adapters/switch', methods=['POST'])
+@api_login_required
+def switch_adapter():
+    """Switch to a different Bluetooth adapter."""
+    if not g.state_machine or not g.state_machine.ble_reader:
+        return jsonify({'error': 'BLE reader not available'}), 503
+
+    ble_reader = g.state_machine.ble_reader
+
+    # Get target adapter name from request (optional)
+    data = request.get_json() or {}
+    target_name = data.get('adapter_name')
+
+    try:
+        if target_name:
+            # Switch to specific adapter by name
+            if hasattr(ble_reader, '_adapter_manager') and ble_reader._adapter_manager:
+                adapter_manager = ble_reader._adapter_manager
+                # Find adapter by name
+                target_adapter = None
+                for adapter in adapter_manager.adapters:
+                    if adapter.name.lower() == target_name.lower():
+                        target_adapter = adapter
+                        break
+
+                if not target_adapter:
+                    return jsonify({'error': f'Adapter "{target_name}" not found'}), 404
+
+                # Switch to target adapter
+                adapter_manager.switch_to_adapter(target_adapter)
+                ble_reader._switch_adapter()
+                logger.info(f"Switched to adapter {target_name} by {session.get('user')}")
+                return jsonify({'success': True, 'adapter': target_name})
+            else:
+                return jsonify({'error': 'Adapter manager not available'}), 503
+        else:
+            # Switch to next adapter
+            ble_reader._switch_adapter()
+            new_adapter = ble_reader.current_adapter_name
+            logger.info(f"Switched to next adapter ({new_adapter}) by {session.get('user')}")
+            return jsonify({'success': True, 'adapter': new_adapter})
+
+    except Exception as e:
+        logger.error(f"Error switching adapter: {e}")
         return jsonify({'error': str(e)}), 500

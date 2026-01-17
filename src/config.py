@@ -231,6 +231,7 @@ class PagerDutyConfig:
     """PagerDuty alerting configuration."""
     enabled: bool = True
     routing_key: str = ""
+    api_token: str = ""  # REST API token for polling incident status
     service_name: str = "O2 Monitor"
 
 

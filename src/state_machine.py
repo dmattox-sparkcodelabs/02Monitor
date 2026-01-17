@@ -71,6 +71,7 @@ class O2MonitorStateMachine:
     HEARTBEAT_INTERVAL = 60.0      # Seconds between heartbeat pings
     CLEANUP_INTERVAL = 86400       # Seconds between database cleanups (24 hours)
     POWER_ONLY_SAVE_INTERVAL = 30  # Seconds between power-only saves when disconnected
+    PAGERDUTY_POLL_INTERVAL = 60.0 # Seconds between PagerDuty status checks
 
     def __init__(
         self,
@@ -119,6 +120,9 @@ class O2MonitorStateMachine:
 
         # Heartbeat tracking
         self._last_heartbeat = datetime.min
+
+        # PagerDuty polling tracking
+        self._last_pagerduty_poll = datetime.min
 
         # Database cleanup tracking
         self._last_cleanup = datetime.min
@@ -272,6 +276,10 @@ class O2MonitorStateMachine:
         if (now - self._last_heartbeat).total_seconds() >= self.HEARTBEAT_INTERVAL:
             await self._send_heartbeat()
 
+        # Poll PagerDuty for external acknowledgements if needed
+        if (now - self._last_pagerduty_poll).total_seconds() >= self.PAGERDUTY_POLL_INTERVAL:
+            await self._poll_pagerduty_status()
+
         # Run daily database cleanup if needed
         if (now - self._last_cleanup).total_seconds() >= self.CLEANUP_INTERVAL:
             await self._run_cleanup()
@@ -323,28 +331,35 @@ class O2MonitorStateMachine:
             # Set AVAPS state on alert
             alert.avaps_state = self._avaps_state
 
-            # Store in database
-            await self.database.insert_alert(alert)
-
-            # Trigger alert through manager
+            # Trigger alert through manager and get PagerDuty dedup_key
             # Critical alerts always trigger full alarm
             # Others depend on severity
+            pagerduty_dedup_key = None
             if alert.severity == AlertSeverity.CRITICAL:
-                await self.alert_manager.trigger_alarm(alert)
+                pagerduty_dedup_key = await self.alert_manager.trigger_alarm(alert)
             elif alert.severity == AlertSeverity.HIGH:
-                await self.alert_manager.trigger_alarm(alert)
+                pagerduty_dedup_key = await self.alert_manager.trigger_alarm(alert)
             elif alert.severity == AlertSeverity.WARNING:
                 # Warning: trigger but maybe not full alarm
-                await self.alert_manager.trigger_alarm(alert)
+                pagerduty_dedup_key = await self.alert_manager.trigger_alarm(alert)
             else:
                 # Info: log only, no alarm
                 logger.info(f"Alert (info): {alert.message}")
 
+            # Store in database with PagerDuty key
+            await self.database.insert_alert(alert, pagerduty_dedup_key=pagerduty_dedup_key)
+
     # ==================== State Evaluation ====================
 
-    # Thresholds for reading staleness (seconds)
-    LATE_READING_THRESHOLD = 10   # 10-30s = late reading warning
-    STALE_READING_THRESHOLD = 30  # >30s = disconnected
+    @property
+    def late_reading_threshold(self) -> int:
+        """Late reading threshold from config (seconds)."""
+        return self.config.bluetooth.late_reading_seconds
+
+    @property
+    def stale_reading_threshold(self) -> int:
+        """Stale/disconnected threshold - 2x late reading threshold."""
+        return self.config.bluetooth.late_reading_seconds * 2
 
     async def _evaluate_state(self) -> MonitorState:
         """Evaluate current conditions and determine state.
@@ -367,11 +382,11 @@ class O2MonitorStateMachine:
         # This handles cases where BLE is connected but sensor is off/inactive
         if self._current_reading:
             reading_age = (datetime.now() - self._current_reading.timestamp).total_seconds()
-            if reading_age > self.STALE_READING_THRESHOLD:
-                # >30 seconds = disconnected
+            if reading_age > self.stale_reading_threshold:
+                # Reading too old = disconnected
                 return await self._evaluate_disconnected()
-            elif reading_age > self.LATE_READING_THRESHOLD:
-                # 10-30 seconds = late reading warning
+            elif reading_age > self.late_reading_threshold:
+                # Reading slightly old = late reading warning
                 return MonitorState.LATE_READING
 
         # Must have a valid reading to be in any "normal" operating state
@@ -559,6 +574,52 @@ class O2MonitorStateMachine:
             status = "disconnected"
 
         await self.alert_manager.send_heartbeat(status)
+
+    async def _poll_pagerduty_status(self) -> None:
+        """Poll PagerDuty for external acknowledgements/resolutions."""
+        self._last_pagerduty_poll = datetime.now()
+
+        try:
+            # Get alerts with PagerDuty incidents that aren't resolved yet
+            pending_alerts = await self.database.get_alerts_pending_pagerduty()
+
+            for alert in pending_alerts:
+                dedup_key = alert.get('pagerduty_dedup_key')
+                if not dedup_key:
+                    continue
+
+                # Check PagerDuty status
+                pd_status = await self.alert_manager.check_pagerduty_status(dedup_key)
+                if not pd_status:
+                    continue
+
+                status = pd_status.get('status')
+                acknowledged_by = pd_status.get('acknowledged_by')
+
+                # Sync status to local database
+                if status == 'resolved':
+                    updated = await self.database.sync_pagerduty_status(
+                        alert['id'],
+                        acknowledged=True,
+                        resolved=True,
+                        acknowledged_by=acknowledged_by
+                    )
+                    if updated:
+                        logger.info(f"Alert {alert['id']} resolved via PagerDuty by {acknowledged_by}")
+                        # Also resolve in alert manager
+                        await self.alert_manager.resolve_alert(alert['id'])
+                elif status == 'acknowledged':
+                    updated = await self.database.sync_pagerduty_status(
+                        alert['id'],
+                        acknowledged=True,
+                        resolved=False,
+                        acknowledged_by=acknowledged_by
+                    )
+                    if updated:
+                        logger.info(f"Alert {alert['id']} acknowledged via PagerDuty by {acknowledged_by}")
+
+        except Exception as e:
+            logger.error(f"PagerDuty polling error: {e}")
 
     async def _run_cleanup(self) -> None:
         """Run daily database cleanup and config backup."""

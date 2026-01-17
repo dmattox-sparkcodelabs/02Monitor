@@ -334,16 +334,19 @@ class PagerDutyClient:
     """
 
     EVENTS_API_URL = "https://events.pagerduty.com/v2/enqueue"
+    REST_API_URL = "https://api.pagerduty.com"
 
-    def __init__(self, routing_key: str, service_name: str = "O2 Monitor"):
+    def __init__(self, routing_key: str, service_name: str = "O2 Monitor", api_token: str = ""):
         """Initialize PagerDuty client.
 
         Args:
             routing_key: PagerDuty Events API v2 routing key
             service_name: Service name for incident source
+            api_token: PagerDuty REST API token for querying incidents
         """
         self.routing_key = routing_key
         self.service_name = service_name
+        self.api_token = api_token
         self._session: Optional[aiohttp.ClientSession] = None
 
     async def _get_session(self) -> aiohttp.ClientSession:
@@ -485,6 +488,70 @@ class PagerDutyClient:
         except Exception as e:
             logger.error(f"PagerDuty API request failed: {e}")
             return False
+
+    async def get_incident_status(self, dedup_key: str) -> Optional[Dict]:
+        """Get incident status from PagerDuty REST API.
+
+        Args:
+            dedup_key: Deduplication key of incident
+
+        Returns:
+            Dict with 'status' (triggered/acknowledged/resolved) and 'acknowledged_by',
+            or None if not found or API unavailable
+        """
+        if not self.api_token:
+            return None
+
+        try:
+            session = await self._get_session()
+            headers = {
+                "Authorization": f"Token token={self.api_token}",
+                "Content-Type": "application/json",
+            }
+
+            # Query incidents by incident_key (dedup_key)
+            params = {
+                "incident_key": dedup_key,
+                "statuses[]": ["triggered", "acknowledged", "resolved"],
+            }
+
+            async with session.get(
+                f"{self.REST_API_URL}/incidents",
+                headers=headers,
+                params=params,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    incidents = data.get("incidents", [])
+                    if incidents:
+                        incident = incidents[0]  # Get most recent
+                        status = incident.get("status", "unknown")
+                        acknowledged_by = None
+
+                        # Try to get who acknowledged
+                        if status in ("acknowledged", "resolved"):
+                            assignments = incident.get("assignments", [])
+                            if assignments:
+                                assignee = assignments[0].get("assignee", {})
+                                acknowledged_by = assignee.get("summary", "PagerDuty")
+
+                        return {
+                            "status": status,
+                            "acknowledged_by": acknowledged_by,
+                            "incident_id": incident.get("id"),
+                        }
+                    return None
+                elif resp.status == 401:
+                    logger.error("PagerDuty API token invalid or expired")
+                    return None
+                else:
+                    text = await resp.text()
+                    logger.error(f"PagerDuty REST API error {resp.status}: {text}")
+                    return None
+        except Exception as e:
+            logger.error(f"PagerDuty REST API request failed: {e}")
+            return None
 
 
 class HealthchecksClient:
@@ -638,6 +705,7 @@ class AlertManager:
             self._pagerduty = PagerDutyClient(
                 routing_key=self.config.alerting.pagerduty.routing_key,
                 service_name=self.config.alerting.pagerduty.service_name,
+                api_token=getattr(self.config.alerting.pagerduty, 'api_token', ''),
             )
 
         # Healthchecks.io
@@ -663,16 +731,19 @@ class AlertManager:
 
     # ==================== Alert Triggering ====================
 
-    async def trigger_alarm(self, alert: Alert) -> None:
+    async def trigger_alarm(self, alert: Alert) -> Optional[str]:
         """Trigger full alarm (local + remote).
 
         Args:
             alert: Alert object with details
+
+        Returns:
+            PagerDuty dedup_key if incident was created, None otherwise
         """
         # Check for duplicate
         if alert.id in self._active_alerts:
             logger.debug(f"Alert {alert.id} already active, skipping")
-            return
+            return self._pagerduty_keys.get(alert.id)
 
         self._active_alerts[alert.id] = alert
         logger.warning(f"ALARM: {alert.message}")
@@ -686,6 +757,7 @@ class AlertManager:
             self._audio.start_alarm(severity=severity, message=tts_message, repeat_interval=repeat_interval)
 
         # PagerDuty
+        pd_key = None
         if self._pagerduty:
             dedup_key = self._pagerduty._make_dedup_key(alert.alert_type.value)
             pd_key = await self._pagerduty.trigger_incident(
@@ -702,6 +774,8 @@ class AlertManager:
             )
             if pd_key:
                 self._pagerduty_keys[alert.id] = pd_key
+
+        return pd_key
 
     async def trigger_local_only(self, alert: Alert) -> None:
         """Trigger local audio alert only (single tone, no repeat).
@@ -764,6 +838,19 @@ class AlertManager:
 
         logger.info(f"Alert resolved: {alert_id}")
         return True
+
+    async def check_pagerduty_status(self, dedup_key: str) -> Optional[Dict]:
+        """Check PagerDuty incident status.
+
+        Args:
+            dedup_key: PagerDuty deduplication key
+
+        Returns:
+            Dict with status info or None if unavailable
+        """
+        if not self._pagerduty:
+            return None
+        return await self._pagerduty.get_incident_status(dedup_key)
 
     async def resolve_all(self) -> None:
         """Resolve all active alerts."""

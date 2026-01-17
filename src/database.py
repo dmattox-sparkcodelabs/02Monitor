@@ -185,6 +185,21 @@ class Database:
 
             await self._connection.commit()
 
+            # Migrations - add columns to existing tables
+            await self._run_migrations(cursor)
+            await self._connection.commit()
+
+    async def _run_migrations(self, cursor) -> None:
+        """Run database migrations for schema updates."""
+        # Add pagerduty_dedup_key column to alerts table if it doesn't exist
+        try:
+            await cursor.execute("SELECT pagerduty_dedup_key FROM alerts LIMIT 1")
+        except Exception:
+            logger.info("Adding pagerduty_dedup_key column to alerts table")
+            await cursor.execute("""
+                ALTER TABLE alerts ADD COLUMN pagerduty_dedup_key TEXT
+            """)
+
     # ==================== Reading Operations ====================
 
     async def insert_reading(
@@ -327,17 +342,18 @@ class Database:
 
     # ==================== Alert Operations ====================
 
-    async def insert_alert(self, alert: Alert) -> None:
+    async def insert_alert(self, alert: Alert, pagerduty_dedup_key: Optional[str] = None) -> None:
         """Insert a new alert.
 
         Args:
             alert: Alert object to insert
+            pagerduty_dedup_key: PagerDuty deduplication key for this alert
         """
         async with self._connection.cursor() as cursor:
             await cursor.execute("""
                 INSERT INTO alerts
-                (id, timestamp, alert_type, severity, message, spo2, heart_rate, avaps_state)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (id, timestamp, alert_type, severity, message, spo2, heart_rate, avaps_state, pagerduty_dedup_key)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 alert.id,
                 alert.timestamp.isoformat(),
@@ -347,6 +363,7 @@ class Database:
                 alert.spo2,
                 alert.heart_rate,
                 alert.avaps_state.value if alert.avaps_state else None,
+                pagerduty_dedup_key,
             ))
             await self._connection.commit()
 
@@ -403,6 +420,71 @@ class Database:
             """)
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
+
+    async def get_alerts_pending_pagerduty(self) -> List[Dict[str, Any]]:
+        """Get unresolved alerts with PagerDuty dedup keys.
+
+        Returns:
+            List of alerts that have PagerDuty incidents to check
+        """
+        async with self._connection.cursor() as cursor:
+            await cursor.execute("""
+                SELECT * FROM alerts
+                WHERE pagerduty_dedup_key IS NOT NULL
+                  AND resolved = FALSE
+                ORDER BY timestamp DESC
+            """)
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    async def sync_pagerduty_status(
+        self,
+        alert_id: str,
+        acknowledged: bool,
+        resolved: bool,
+        acknowledged_by: Optional[str] = None
+    ) -> bool:
+        """Update alert status from PagerDuty.
+
+        Args:
+            alert_id: Alert ID to update
+            acknowledged: Whether PagerDuty incident was acknowledged
+            resolved: Whether PagerDuty incident was resolved
+            acknowledged_by: Who acknowledged (from PagerDuty)
+
+        Returns:
+            True if alert was updated
+        """
+        async with self._connection.cursor() as cursor:
+            if resolved:
+                await cursor.execute("""
+                    UPDATE alerts
+                    SET resolved = TRUE,
+                        resolved_at = ?,
+                        acknowledged = TRUE,
+                        acknowledged_at = COALESCE(acknowledged_at, ?),
+                        acknowledged_by = COALESCE(acknowledged_by, ?)
+                    WHERE id = ? AND resolved = FALSE
+                """, (
+                    datetime.now().isoformat(),
+                    datetime.now().isoformat(),
+                    acknowledged_by or 'PagerDuty',
+                    alert_id
+                ))
+            elif acknowledged:
+                await cursor.execute("""
+                    UPDATE alerts
+                    SET acknowledged = TRUE,
+                        acknowledged_at = COALESCE(acknowledged_at, ?),
+                        acknowledged_by = COALESCE(acknowledged_by, ?)
+                    WHERE id = ? AND acknowledged = FALSE
+                """, (
+                    datetime.now().isoformat(),
+                    acknowledged_by or 'PagerDuty',
+                    alert_id
+                ))
+            await self._connection.commit()
+            return cursor.rowcount > 0
 
     async def acknowledge_alert(
         self,

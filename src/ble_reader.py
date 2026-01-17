@@ -131,6 +131,30 @@ class AdapterManager:
             self.current_adapter_index = 0
         return self.configured_adapters[self.current_adapter_index]
 
+    def switch_to_adapter(self, target: AdapterInfo) -> bool:
+        """Switch to a specific adapter.
+
+        Args:
+            target: The adapter to switch to
+
+        Returns:
+            True if switch was successful
+        """
+        # Find the index of the target adapter
+        for i, adapter in enumerate(self.configured_adapters):
+            if adapter.name == target.name or adapter.mac_address == target.mac_address:
+                self.current_adapter_index = i
+                logger.info(f"Set current adapter to {adapter.name}")
+                return True
+
+        logger.error(f"Adapter {target.name} not found in configuration")
+        return False
+
+    @property
+    def adapters(self) -> List[AdapterInfo]:
+        """Get list of configured adapters."""
+        return self.configured_adapters
+
     def switch_to_next_adapter(self) -> Optional[AdapterInfo]:
         """Switch to the next available adapter.
 

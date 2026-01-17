@@ -395,6 +395,11 @@
                 <input type="text" id="pagerduty-key" placeholder="Events API v2 routing key">
                 <span class="help-text">Get from PagerDuty > Service > Integrations</span>
             </div>
+            <div class="form-group">
+                <label for="pagerduty-token">API Token (Optional)</label>
+                <input type="password" id="pagerduty-token" placeholder="REST API user token">
+                <span class="help-text">For two-way sync - acknowledging in PagerDuty updates the app</span>
+            </div>
         </section>
 
         <!-- Healthchecks.io Integration -->
@@ -432,5 +437,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/settings.js') }}?v=13"></script>
+<script src="{{ url_for('static', filename='js/settings.js') }}?v=14"></script>
 {% endblock %}

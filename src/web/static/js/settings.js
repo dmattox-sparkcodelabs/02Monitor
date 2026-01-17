@@ -34,6 +34,7 @@
 
         // PagerDuty
         pagerdutyKey: document.getElementById('pagerduty-key'),
+        pagerdutyToken: document.getElementById('pagerduty-token'),
 
         // Healthchecks
         healthchecksUrl: document.getElementById('healthchecks-url'),
@@ -118,6 +119,7 @@
         // PagerDuty settings
         if (config.alerting && config.alerting.pagerduty) {
             setValue('pagerdutyKey', config.alerting.pagerduty.routing_key);
+            setValue('pagerdutyToken', config.alerting.pagerduty.api_token);
         }
 
         // Healthchecks settings
@@ -450,10 +452,13 @@
             end: elements.sleepEnd?.value || '07:00'
         };
 
-        // Only include PagerDuty key if provided
+        // Only include PagerDuty settings if provided
         const pdKey = (elements.pagerdutyKey?.value || '').trim();
-        if (pdKey) {
-            config.alerting.pagerduty = { routing_key: pdKey };
+        const pdToken = (elements.pagerdutyToken?.value || '').trim();
+        if (pdKey || pdToken) {
+            config.alerting.pagerduty = {};
+            if (pdKey) config.alerting.pagerduty.routing_key = pdKey;
+            if (pdToken) config.alerting.pagerduty.api_token = pdToken;
         }
 
         // Only include Healthchecks URL if provided

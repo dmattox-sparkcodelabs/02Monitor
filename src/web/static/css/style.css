@@ -975,3 +975,142 @@ body {
         display: none;
     }
 }
+
+/* ==================== Alert Popup ==================== */
+
+.alert-popup {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.alert-popup.hidden {
+    display: none;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+}
+
+.alert-popup-content {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    max-width: 400px;
+    width: 90%;
+    overflow: hidden;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.alert-popup.severity-critical .alert-popup-content {
+    border: 3px solid var(--danger-color);
+}
+
+.alert-popup.severity-high .alert-popup-content {
+    border: 3px solid #E65100;
+}
+
+.alert-popup.severity-warning .alert-popup-content {
+    border: 3px solid var(--warning-color);
+}
+
+.alert-popup.severity-info .alert-popup-content {
+    border: 3px solid var(--info-color);
+}
+
+.alert-popup-header {
+    padding: 1rem 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.alert-popup.severity-critical .alert-popup-header {
+    background: var(--danger-color);
+    color: white;
+}
+
+.alert-popup.severity-high .alert-popup-header {
+    background: #E65100;
+    color: white;
+}
+
+.alert-popup.severity-warning .alert-popup-header {
+    background: var(--warning-color);
+    color: #333;
+}
+
+.alert-popup.severity-info .alert-popup-header {
+    background: var(--info-color);
+    color: white;
+}
+
+.alert-popup-icon {
+    font-size: 1.5rem;
+}
+
+.alert-popup-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+}
+
+.alert-popup-body {
+    padding: 1.5rem;
+}
+
+.alert-popup-severity {
+    font-size: 0.875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+}
+
+.alert-popup-severity.severity-critical { color: var(--danger-color); }
+.alert-popup-severity.severity-high { color: #E65100; }
+.alert-popup-severity.severity-warning { color: var(--warning-color); }
+.alert-popup-severity.severity-info { color: var(--info-color); }
+
+.alert-popup-message {
+    font-size: 1rem;
+    line-height: 1.5;
+    color: var(--text-color);
+    margin-bottom: 0.75rem;
+}
+
+.alert-popup-time {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+}
+
+.alert-popup-actions {
+    padding: 1rem 1.5rem;
+    background: var(--bg-light);
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+}
+
+.alert-popup-actions .btn {
+    padding: 0.625rem 1.25rem;
+    font-size: 0.9375rem;
+}
+
+/* Make critical alerts more prominent */
+.alert-popup.severity-critical .alert-popup-content {
+    animation: pulse 1s ease-in-out infinite;
+}
