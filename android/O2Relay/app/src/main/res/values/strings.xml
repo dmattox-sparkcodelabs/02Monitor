@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">O2 Relay</string>
+
+    <!-- Status messages -->
+    <string name="status_dormant">Status: DORMANT</string>
+    <string name="status_dormant_desc">Pi is reading directly</string>
+    <string name="status_scanning">Status: SCANNING</string>
+    <string name="status_scanning_desc">Looking for oximeter…</string>
+    <string name="status_connected">Status: CONNECTED</string>
+    <string name="status_connected_desc">Relaying to Pi</string>
+    <string name="status_queuing">Status: QUEUING</string>
+    <string name="status_queuing_desc">Pi unreachable, storing locally</string>
+
+    <!-- Check-in info -->
+    <string name="last_check_in_never">Last check-in: Never</string>
+    <string name="last_check_in_format">Last check-in: %1$s ago</string>
+    <string name="pi_status_unknown">Pi status: Unknown</string>
+    <string name="pi_status_format">Pi last reading: %1$s ago</string>
+
+    <!-- Buttons -->
+    <string name="start_service">Start Service</string>
+    <string name="stop_service">Stop Service</string>
+
+    <!-- Settings -->
+    <string name="server_not_configured">Server: Not configured</string>
+    <string name="server_format">Server: %1$s</string>
+    <string name="device_mac_default">Device: C8:F1:6B:56:7B:F1</string>
+    <string name="device_mac_format">Device: %1$s</string>
+    <string name="version_format">Version: %1$s</string>
+</resources>

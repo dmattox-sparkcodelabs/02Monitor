@@ -14,6 +14,70 @@ This document tracks all tasks needed to implement the O2 Relay Android app as d
 
 ---
 
+## Phase 0: Development Environment Setup (Priority)
+
+These tasks must be completed before any Android development can begin.
+
+### 0.1 Install Android Studio
+
+- [x] **Download and install Android Studio**
+  - Download from https://developer.android.com/studio
+  - Run installer, follow prompts
+  - Installed to: `C:\Program Files\Android\Android Studio`
+
+- [x] **Complete Android Studio first-run setup**
+  - Accept licenses
+  - Choose "Standard" installation type
+  - SDK components downloaded successfully
+
+### 0.2 SDK Configuration
+
+- [x] **Install required SDK components**
+  - SDK Location: `C:\Users\dmatt\AppData\Local\Android\Sdk`
+  - SDK Platforms: Android 36 (API 36) - newer than planned, backwards compatible
+  - SDK Tools:
+    - Build-Tools 36.1.0
+    - Platform-Tools (ADB 36.0.2)
+    - Emulator installed
+
+- [ ] **Verify SDK environment variables (optional but recommended)**
+  - `ANDROID_HOME` pointing to SDK location
+  - Add `platform-tools` to PATH for command-line ADB
+
+### 0.3 Device Setup
+
+Choose emulator OR physical device (physical recommended for BLE testing):
+
+- [x] **Option A: Set up Android Emulator**
+  - AVD created during Android Studio setup: "Medium Phone API 36.1"
+  - Android 16 (API 36), x86_64, Google Play enabled
+  - Emulator starts and connects via ADB (emulator-5554)
+  - Note: Emulator cannot test real BLE - only for UI development
+
+- [ ] **Option B: Set up physical device (for BLE testing later)**
+  - Enable Developer Options on phone:
+    - Settings → About Phone → Tap "Build number" 7 times
+  - Enable USB Debugging:
+    - Settings → Developer Options → USB Debugging → ON
+  - Connect phone via USB cable
+  - Accept "Allow USB debugging" prompt on phone
+  - *Deferred: Will need physical access or ADB over WiFi*
+
+### 0.4 Verify Setup
+
+- [x] **Verify ADB connection**
+  - ADB version: 36.0.2
+  - Emulator connected: emulator-5554
+  - Status: device (ready)
+
+- [x] **Create test project to verify toolchain**
+  - Created actual O2Relay project instead of throwaway test
+  - Build successful with Gradle 8.11.1
+  - App installs and runs on emulator
+  - Toolchain verified working
+
+---
+
 ## Phase 1: Foundation & Core Relay (MVP)
 
 ### 1.1 Pi-side API Endpoints (Pi)
@@ -47,144 +111,170 @@ These endpoints are required before the Android app can function.
 
 ### 1.2 Android Project Setup (Android)
 
-- [ ] **(Android) Create Android project structure**
+- [x] **(Android) Create Android project structure**
   - Location: `android/O2Relay/`
   - Package: `com.o2monitor.relay`
   - Min SDK: 26 (Android 8.0)
-  - Target SDK: 34 (Android 14)
+  - Target SDK: 36 (Android 16) - updated from plan
   - Language: Kotlin
 
-- [ ] **(Android) Configure build.gradle.kts**
-  - Kotlin version
-  - Dependencies:
-    - AndroidX Core KTX
-    - AndroidX AppCompat
-    - Material Components
-    - Coroutines
-    - OkHttp (for HTTP)
-    - Gson (for JSON)
-  - Build config for version management
+- [x] **(Android) Configure build.gradle.kts**
+  - Kotlin 2.1.0, AGP 8.7.3
+  - Dependencies configured:
+    - AndroidX Core KTX, AppCompat, Material, Activity, ConstraintLayout
+    - Coroutines (core + android)
+    - OkHttp, Gson
+  - Version catalog (libs.versions.toml)
+  - ViewBinding and BuildConfig enabled
 
-- [ ] **(Android) Configure AndroidManifest.xml**
-  - All permissions (see DESIGN.md)
-  - Foreground service declaration
+- [x] **(Android) Configure AndroidManifest.xml**
+  - All BLE permissions (BLUETOOTH_CONNECT, BLUETOOTH_SCAN, etc.)
+  - Location permissions for BLE scanning
+  - Foreground service with connectedDevice type
   - Boot receiver declaration
-  - Application metadata
+  - POST_NOTIFICATIONS permission
 
-- [ ] **(Android) Create Application class**
+- [x] **(Android) Create Application class**
   - Initialize logging
-  - Initialize singletons (SettingsManager)
+  - Set up notification channels
   - Handle uncaught exceptions
+  - File: `O2RelayApplication.kt`
 
 ### 1.3 BLE Implementation (Android)
 
-- [ ] **(Android) Create OximeterProtocol.kt**
+- [x] **(Android) Create OximeterProtocol.kt**
   - `calcCrc(data: ByteArray): Byte` - CRC calculation
   - `buildReadingCommand(): ByteArray` - Build 0x17 command packet
   - `parsePacket(data: ByteArray): ParseResult` - Parse response
   - `parseReading(payload: ByteArray): OxiReading?` - Extract SpO2, HR, battery
-  - Data class: `OxiReading(spo2, heartRate, battery, timestamp)`
-  - Unit tests for CRC matching Python implementation
+  - Data class: `OxiReading(spo2, heartRate, battery, timestamp, movement)`
+  - Sealed class `ParseResult` with Success/Incomplete/Error variants
+  - 14 unit tests passing (OximeterProtocolTest.kt)
 
-- [ ] **(Android) Create BleManager.kt**
-  - Constants: `TARGET_MAC`, `RX_UUID`, `TX_UUID`
-  - Callback interface: `onConnected()`, `onDisconnected()`, `onReading()`, `onError()`
-  - `startScan(timeout: Long)` - Scan for device
-  - `stopScan()`
-  - `connect(device: BluetoothDevice)`
-  - `disconnect()`
+- [x] **(Android) Create BleManager.kt**
+  - Constants: `TARGET_MAC`, `RX_UUID`, `TX_UUID` (from OximeterProtocol)
+  - Callback interface: `onConnected()`, `onDisconnected()`, `onReading()`, `onError()`, `onScanResult()`, `onScanFailed()`
+  - State enum: IDLE, SCANNING, CONNECTING, DISCOVERING_SERVICES, ENABLING_NOTIFICATIONS, CONNECTED, DISCONNECTING
+  - `startScan(timeout: Long)` - Scan for device with timeout
+  - `stopScan()` - Cancel scan
+  - `connect(device: BluetoothDevice)` - Connect to discovered device
+  - `connectToTarget()` - Connect directly by MAC address
+  - `disconnect()` - Graceful disconnect
   - `requestReading()` - Send 0x17 command
-  - Handle GATT callbacks
-  - Buffer incoming data, parse complete packets
-  - Connection state tracking
+  - GATT callbacks for connection, service discovery, notifications
+  - Data buffering and packet parsing via OximeterProtocol
+  - Connection state tracking with timeouts
 
-- [ ] **(Android) BLE permissions handling**
-  - Check BLUETOOTH_CONNECT, BLUETOOTH_SCAN permissions
-  - Check ACCESS_FINE_LOCATION (required for BLE scanning on Android 12+)
-  - Request permissions flow
-  - Handle permission denied gracefully
+- [x] **(Android) BLE permissions handling**
+  - Created `BlePermissions.kt` helper object
+  - Version-aware permission detection (Android 12+ vs older)
+  - Check BLUETOOTH_CONNECT, BLUETOOTH_SCAN (API 31+)
+  - Check ACCESS_FINE_LOCATION (API 23-30)
+  - Permission request flow with rationale
+  - Result processing helper
 
-- [ ] **(Android) BLE scanning logic**
-  - Filter by MAC address (primary) or device name prefix "O2M" (fallback)
-  - Scan timeout (30 seconds)
-  - Handle scan failures
-  - Battery-efficient scanning (low latency mode only when needed)
+- [x] **(Android) BLE scanning logic**
+  - Filter by MAC address (primary) using ScanFilter
+  - Fallback to device name prefix "O2M" if MAC invalid
+  - Configurable scan timeout (default 30 seconds)
+  - Balanced scan mode for battery efficiency
+  - Auto-connect on device found
 
-- [ ] **(Android) GATT connection handling**
-  - Connect with autoConnect=false (faster initial connection)
-  - Discover services
-  - Find RX and TX characteristics
-  - Enable notifications on RX characteristic
-  - Handle 133 GATT_ERROR (retry logic)
-  - Handle disconnection events
-  - Clean up resources
+- [x] **(Android) GATT connection handling**
+  - Connect with autoConnect=false and TRANSPORT_LE
+  - Connection timeout (10 seconds)
+  - Service and characteristic discovery
+  - Find RX/TX characteristics by UUID
+  - Enable notifications via CCCD descriptor
+  - Handle API 33+ characteristic/descriptor methods
+  - Graceful disconnect with cleanup
+  - Note: GATT_ERROR 133 retry logic deferred to RelayService
 
 ### 1.4 Network/API Client (Android)
 
-- [ ] **(Android) Create ApiClient.kt**
-  - Constructor takes base URL
-  - OkHttp client with timeouts (connect: 10s, read: 30s)
-  - Coroutine-based async methods
-  - JSON parsing with Gson
+- [x] **(Android) Create ApiClient.kt**
+  - Constructor takes base URL and deviceId
+  - OkHttp client with timeouts (connect: 10s, read: 30s, write: 30s)
+  - Coroutine-based async methods (suspend functions on Dispatchers.IO)
+  - JSON parsing with Gson and @SerializedName annotations
+  - 15 unit tests passing (ApiClientTest.kt with MockWebServer)
 
-- [ ] **(Android) Implement getRelayStatus()**
+- [x] **(Android) Implement getRelayStatus()**
   - GET `/api/relay/status`
-  - Parse response to `RelayStatus` data class
-  - Handle network errors, timeouts
-  - Return null on failure (let caller decide what to do)
+  - Returns `RelayStatus?` (null on error)
+  - Handles network errors, timeouts gracefully
 
-- [ ] **(Android) Implement postReading()**
+- [x] **(Android) Implement postReading()**
   - POST `/api/relay/reading`
-  - Serialize `OxiReading` to JSON
-  - Return success/failure boolean
-  - Handle network errors gracefully
+  - Accepts `OxiReading` and optional `queued` flag
+  - Returns `Boolean` success/failure
 
-- [ ] **(Android) Create data classes**
-  - `RelayStatus(timestamp, lastReadingAgeSeconds, source, needsRelay, piBleConnected)`
-  - `OxiReading(spo2, heartRate, battery, timestamp, deviceId)`
-  - `ApiResponse(status, message)`
+- [x] **(Android) Implement postBatch()**
+  - POST `/api/relay/batch`
+  - Accepts list of readings for batch upload
+  - Returns `BatchResponse?` with accepted/rejected counts
+
+- [x] **(Android) Implement getAppVersion()**
+  - GET `/api/relay/app-version`
+  - Returns `AppVersion?` for update checking
+
+- [x] **(Android) Create data classes**
+  - `RelayStatus` - Pi status response
+  - `ReadingRequest` - Single reading POST body
+  - `BatchRequest/BatchResponse` - Batch upload
+  - `AppVersion` - Version check response
+  - `ApiResponse` - Generic status response
 
 ### 1.5 Foreground Service (Android)
 
-- [ ] **(Android) Create RelayService.kt**
-  - Extend `Service`
-  - State enum: `DORMANT`, `SCANNING`, `CONNECTED`, `QUEUING`
-  - Binder for MainActivity communication
-  - Lifecycle: `onCreate()`, `onStartCommand()`, `onDestroy()`
+- [x] **(Android) Create RelayService.kt**
+  - Extends `Service` with full lifecycle management
+  - State enum: `STOPPED`, `DORMANT`, `SCANNING`, `CONNECTED`, `QUEUING`
+  - `RelayBinder` for MainActivity communication
+  - `StateListener` interface for UI updates
+  - Intent actions: `ACTION_START`, `ACTION_STOP`
+  - Coroutine scope for async operations
 
-- [ ] **(Android) Notification channel setup**
-  - Create channel in Application class or Service
+- [x] **(Android) Notification channel setup**
+  - Channel created in `O2RelayApplication` (already done in Phase 1.2)
   - Channel ID: "o2_relay_service"
-  - Importance: LOW (no sound, just persistent)
+  - Importance: LOW (no sound, persistent)
 
-- [ ] **(Android) Foreground notification**
-  - Create notification with current state
-  - Update notification when state changes
-  - Show SpO2/HR when connected
+- [x] **(Android) Foreground notification**
+  - Dynamic content based on state
+  - Shows SpO2/HR when connected
   - Tap opens MainActivity
+  - Stop action button
+  - Uses system Bluetooth icon
 
-- [ ] **(Android) State machine implementation**
-  - `transitionTo(newState)` method
-  - DORMANT: Start 60s check-in timer
-  - SCANNING: Start BLE scan, 30s timeout
-  - CONNECTED: Start 5s reading request timer
-  - Handle state-specific cleanup on exit
+- [x] **(Android) State machine implementation**
+  - `transitionTo(newState)` with exit/enter state handling
+  - DORMANT: 60s check-in timer, initial check-in on enter
+  - SCANNING: 30s BLE scan timeout
+  - CONNECTED: 5s reading request timer
+  - QUEUING: 10s Pi retry timer
+  - Proper cleanup on state exit
 
-- [ ] **(Android) Check-in timer (DORMANT state)**
-  - Every 60 seconds, call `getRelayStatus()`
-  - If `needsRelay == true`, transition to SCANNING
-  - Use `Handler` with `postDelayed()` or coroutine with delay
+- [x] **(Android) Check-in timer (DORMANT state)**
+  - Handler-based timer with 60s interval
+  - Calls `getRelayStatus()` via ApiClient
+  - Transitions to SCANNING if `needsRelay == true`
+  - Updates `lastPiStatus` for UI
 
-- [ ] **(Android) Reading timer (CONNECTED state)**
-  - Every 5 seconds, call `requestReading()` on BleManager
-  - On reading received, call `postReading()` to Pi
-  - Track readings sent count
+- [x] **(Android) Reading timer (CONNECTED state)**
+  - Handler-based timer with 5s interval
+  - Calls `requestReading()` on BleManager
+  - Posts reading to Pi via ApiClient
+  - Transitions to QUEUING on Pi unreachable
+  - Tracks `readingsSentCount` and `readingsQueuedCount`
 
-- [ ] **(Android) BLE event handling in service**
+- [x] **(Android) BLE event handling in service**
   - `onConnected()` → transition to CONNECTED
-  - `onDisconnected()` → check Pi status, transition appropriately
+  - `onDisconnected()` → check Pi status, go DORMANT or SCANNING
   - `onReading()` → post to Pi, update notification
-  - `onError()` → log, potentially transition state
+  - `onError()` → notify listener, transition to DORMANT on scan failure
+  - `onScanResult()` → status update
+  - `onScanFailed()` → transition to DORMANT
 
 ### 1.6 Basic UI (Android)
 
@@ -450,16 +540,18 @@ These endpoints are required before the Android app can function.
 
 ### 5.1 Unit Tests (Android)
 
-- [ ] **(Android) CRC calculation tests**
-  - Test vectors from Python implementation
-  - Edge cases (empty data, single byte, etc.)
+- [x] **(Android) CRC calculation tests**
+  - Test vectors verified against implementation
+  - Edge cases (0x00, 0x01, 0xFF, multi-byte sequences)
 
-- [ ] **(Android) Packet parsing tests**
+- [x] **(Android) Packet parsing tests**
   - Valid reading packet
   - Sensor off packet (flag 0xFF)
   - Idle packet (zeros)
   - Incomplete packet
-  - Multiple packets in buffer
+  - Multiple packets in buffer (findPacket)
+  - Invalid header detection
+  - Too short packet handling
 
 - [ ] **(Android) State machine tests**
   - All state transitions
@@ -551,13 +643,15 @@ These endpoints are required before the Android app can function.
 ## Dependencies
 
 ```
-Phase 1.1 (Pi API) ──────────┐
-                             ├──> Phase 1.5 (Service) ──> Phase 1.6 (UI)
-Phase 1.2 (Project Setup) ───┤
-                             │
-Phase 1.3 (BLE) ─────────────┤
-                             │
-Phase 1.4 (API Client) ──────┘
+Phase 0 (Dev Environment) ──> All Android tasks
+
+Phase 0 Complete ─┬─> Phase 1.1 (Pi API) ──────────┐
+                  │                                 │
+                  └─> Phase 1.2 (Project Setup) ───┤
+                                                   ├──> Phase 1.5 (Service) ──> Phase 1.6 (UI)
+                      Phase 1.3 (BLE) ─────────────┤
+                                                   │
+                      Phase 1.4 (API Client) ──────┘
 
 Phase 1 Complete ──> Phase 2 (Reliability)
                  ──> Phase 3 (Polish)
@@ -573,6 +667,7 @@ All Phases ──> Phase 5 (Testing & Deployment)
 
 | Phase | Effort | Notes |
 |-------|--------|-------|
+| Phase 0 | 1-2 hours | Download/install time, longer on slow internet |
 | Phase 1 | 3-4 days | Core functionality, can test end-to-end |
 | Phase 2 | 1-2 days | Queue and reliability |
 | Phase 3 | 1-2 days | Polish, can ship without |

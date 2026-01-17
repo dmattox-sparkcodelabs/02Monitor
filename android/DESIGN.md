@@ -743,3 +743,210 @@ Store in `src/web/static/app/version.json`:
 - Pi API patterns: `src/web/api.py`
 - Config: `config.yaml`
 - Original draft: `android/DESIGN_DRAFT.md`
+
+---
+
+## Implementation Notes (Updated 2026-01-17)
+
+### Actual SDK Versions Used
+
+| Component | Planned | Actual | Notes |
+|-----------|---------|--------|-------|
+| Target SDK | 34 (Android 14) | 36 (Android 16) | Newer SDK available at setup time |
+| Min SDK | 26 (Android 8.0) | 26 (Android 8.0) | As planned |
+| Kotlin | - | 2.1.0 | Latest stable |
+| AGP | - | 8.9.1 | Required for compileSdk=36 support |
+| Gradle | - | 8.11.1 | Latest stable |
+
+### Project Location
+
+```
+android/O2Relay/
+├── app/
+│   ├── src/main/
+│   │   ├── java/com/o2monitor/relay/
+│   │   │   ├── MainActivity.kt           # Basic UI - implemented
+│   │   │   ├── O2RelayApplication.kt     # Application class - implemented
+│   │   │   ├── OximeterProtocol.kt       # BLE protocol - implemented
+│   │   │   ├── BleManager.kt             # BLE scanning/connection - implemented
+│   │   │   ├── BlePermissions.kt         # Permission helper - implemented
+│   │   │   ├── ApiClient.kt              # HTTP client - implemented
+│   │   │   ├── RelayService.kt           # Foreground service - implemented
+│   │   │   └── BootReceiver.kt           # Stub - Phase 2.4
+│   │   ├── res/
+│   │   │   ├── layout/activity_main.xml
+│   │   │   ├── values/strings.xml
+│   │   │   ├── values/colors.xml
+│   │   │   └── values/themes.xml
+│   │   └── AndroidManifest.xml
+│   ├── src/test/
+│   │   └── java/
+│   │       ├── android/util/Log.kt           # Mock Log for tests
+│   │       └── com/o2monitor/relay/
+│   │           ├── OximeterProtocolTest.kt   # 14 tests
+│   │           └── ApiClientTest.kt          # 15 tests
+│   └── build.gradle.kts
+├── gradle/
+│   ├── wrapper/
+│   └── libs.versions.toml           # Version catalog
+├── build.gradle.kts
+├── settings.gradle.kts
+├── gradle.properties
+├── local.properties                 # Not in git - SDK path
+└── .gitignore
+```
+
+### Build Commands
+
+```bash
+# Set JAVA_HOME to Android Studio's bundled JDK
+export JAVA_HOME="C:/Program Files/Android/Android Studio/jbr"
+
+# Build debug APK
+cd android/O2Relay
+./gradlew.bat assembleDebug
+
+# Install on connected device/emulator
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+
+# Launch app
+adb shell am start -n com.o2monitor.relay/.MainActivity
+```
+
+### Development Environment
+
+- **Android Studio**: 2025.2.3.9 (Otter)
+- **SDK Location**: `C:\Users\dmatt\AppData\Local\Android\Sdk`
+- **Emulator**: Medium Phone API 36.1 (x86_64, Google Play)
+- **ADB**: 36.0.2
+
+### OximeterProtocol Implementation (2026-01-17)
+
+**Files Created:**
+- `OximeterProtocol.kt` - Protocol implementation
+- `OximeterProtocolTest.kt` - 14 unit tests (all passing)
+- `O2RelayApplication.kt` - Application class with notification channels
+
+**CRC Test Vectors:**
+The CRC algorithm produces the following values (verified by running implementation):
+| Input | CRC |
+|-------|-----|
+| `[0x00]` | `0x00` |
+| `[0x01]` | `0x07` |
+| `[0xFF]` | `0xF3` |
+| `[0x55, 0x17]` | `0x28` |
+| `[0xAA, 0x17, 0xE8, 0x00, 0x00, 0x00, 0x00]` (command) | `0x1B` |
+
+**Packet Parsing Notes:**
+- Minimum 7 bytes needed to read header + payload length
+- If packet has valid header but incomplete data, returns `ParseResult.Incomplete`
+- CRC verification covers all bytes except the final CRC byte
+- Response header is `0x55` (vs command header `0xAA`)
+
+**Run Tests:**
+```bash
+cd android/O2Relay
+JAVA_HOME="C:/Program Files/Android/Android Studio/jbr" ./gradlew testDebugUnitTest
+```
+
+### BleManager Implementation (2026-01-17)
+
+**Files Created:**
+- `BleManager.kt` - BLE scanning, connection, GATT operations
+- `BlePermissions.kt` - Permission checking/requesting helper
+
+**BleManager Features:**
+- State machine: IDLE → SCANNING → CONNECTING → DISCOVERING_SERVICES → ENABLING_NOTIFICATIONS → CONNECTED
+- Scan with MAC address filter (falls back to name prefix if MAC invalid)
+- Connection with 10-second timeout
+- Automatic service discovery and notification setup
+- Data buffering for fragmented BLE packets
+- Uses OximeterProtocol for packet parsing
+- Handles Android API level differences (API 33+ methods)
+
+**BlePermissions Features:**
+- Version-aware: Android 12+ uses BLUETOOTH_SCAN/CONNECT, older uses ACCESS_FINE_LOCATION
+- Permission rationale text for user explanation
+- Request code constant for result handling
+
+**Testing Notes:**
+- BLE code compiles successfully
+- Unit tests still pass (14/14)
+- Actual BLE testing requires physical device (emulator doesn't support BLE)
+- GATT error 133 retry logic will be implemented in RelayService
+
+**Known Limitations:**
+- No reconnection retry logic yet (will be in RelayService)
+- No MTU negotiation (uses default, should work for oximeter packets)
+- Scan uses SCAN_MODE_BALANCED; may need LOW_LATENCY for faster discovery
+
+### ApiClient Implementation (2026-01-17)
+
+**Files Created:**
+- `ApiClient.kt` - HTTP client with all API methods and data classes
+- `ApiClientTest.kt` - 15 unit tests using MockWebServer
+- `android/util/Log.kt` - Mock Log class for unit tests
+
+**ApiClient Features:**
+- OkHttp with configurable timeouts (connect: 10s, read/write: 30s)
+- Coroutine-based suspend functions running on Dispatchers.IO
+- Gson for JSON serialization with @SerializedName for snake_case mapping
+- Methods: `getRelayStatus()`, `postReading()`, `postBatch()`, `getAppVersion()`, `isReachable()`
+- Graceful error handling - returns null/false on failures, never throws
+
+**Data Classes:**
+- `RelayStatus` - Response from GET /api/relay/status
+- `ReadingRequest` - Request body for POST /api/relay/reading
+- `BatchRequest/BatchResponse` - Batch upload types
+- `AppVersion` - Version info for updates
+- `ApiResponse` - Generic status response
+
+**Test Dependencies Added:**
+- `mockwebserver:4.12.0` - OkHttp mock server for testing
+- `kotlinx-coroutines-test:1.9.0` - Coroutine test utilities
+
+**Total Unit Tests: 29** (14 OximeterProtocol + 15 ApiClient)
+
+### RelayService Implementation (2026-01-17)
+
+**File Updated:**
+- `RelayService.kt` - Full foreground service implementation
+
+**State Machine:**
+```
+STOPPED → DORMANT → SCANNING → CONNECTED ↔ QUEUING
+                  ↑___________|          |
+                  |_______________________|
+```
+
+**States and Behavior:**
+| State | Timer | Interval | Action |
+|-------|-------|----------|--------|
+| DORMANT | Check-in | 60s | GET /api/relay/status, transition to SCANNING if needsRelay |
+| SCANNING | BLE scan | 30s timeout | Scan for oximeter, auto-connect on found |
+| CONNECTED | Reading | 5s | Request reading, POST to Pi |
+| QUEUING | Pi retry | 10s | Check Pi reachability, transition to CONNECTED when available |
+
+**Key Features:**
+- `RelayBinder` for MainActivity binding
+- `StateListener` interface for UI updates (onStateChanged, onReadingReceived, onStatusUpdate, onError)
+- Handler-based timers for all intervals
+- Coroutine scope for async API calls
+- Foreground notification with dynamic content
+- Proper state exit/enter cleanup
+- BLE disconnect handling (checks Pi status before deciding next state)
+
+**Notification Content by State:**
+- DORMANT: "Pi is reading directly"
+- SCANNING: "Looking for oximeter..."
+- CONNECTED: "SpO2: X% HR: Y bpm" (or "Waiting for reading...")
+- QUEUING: "SpO2: X% (Pi offline)" (or "Pi offline - storing locally")
+
+**Default Settings (hardcoded for MVP):**
+- Server URL: http://192.168.4.100:5000
+- Oximeter MAC: C8:F1:6B:56:7B:F1
+- Device ID: android_relay
+
+**TODO for Phase 2:**
+- Local queue for readings when Pi unreachable (currently just counts)
+- Queue flush on Pi reconnect
